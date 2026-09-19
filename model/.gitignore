@@ -1,0 +1,5 @@
+# Generated artifacts (panel/trained/forecast/evaluation/metadata) are
+# reproducible from data/ via the CLI and may be large; do not track.
+artifacts/
+__pycache__/
+*.pyc

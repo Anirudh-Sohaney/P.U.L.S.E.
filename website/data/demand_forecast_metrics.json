@@ -1,0 +1,172 @@
+{
+  "pooled": {
+    "mae": 2.3156512064586185,
+    "rmse": 6.335579121497816,
+    "wape": 0.45248761970672136
+  },
+  "per_drug": {
+    "Acetaminophen 500 mg tablet": {
+      "mae": 9.529656743334833,
+      "rmse": 22.127944744887397,
+      "wape": 0.4572525881331063
+    },
+    "Albuterol HFA inhaler": {
+      "mae": 6.123231119920161,
+      "rmse": 11.817742798735534,
+      "wape": 0.6702667312853782
+    },
+    "Amlodipine 5 mg tablet": {
+      "mae": 1.930393309584845,
+      "rmse": 2.544816336897694,
+      "wape": 0.31655491820012016
+    },
+    "Amoxicillin 500 mg capsule": {
+      "mae": 2.698740807509868,
+      "rmse": 3.5609420583097453,
+      "wape": 0.3543132103111115
+    },
+    "Amoxicillin-clavulanate 875/125 mg tablet": {
+      "mae": 1.8499434761633382,
+      "rmse": 2.4157470691652887,
+      "wape": 0.4270635425015689
+    },
+    "Atorvastatin 20 mg tablet": {
+      "mae": 2.0216161472914376,
+      "rmse": 2.647152185716171,
+      "wape": 0.3371986403120558
+    },
+    "Azithromycin 250 mg tablet": {
+      "mae": 1.7374053023685918,
+      "rmse": 2.2978268760305056,
+      "wape": 0.4229860463104422
+    },
+    "Cephalexin 500 mg capsule": {
+      "mae": 1.5249566674998432,
+      "rmse": 1.9632568508665686,
+      "wape": 0.4043875177756709
+    },
+    "Cetirizine 10 mg tablet": {
+      "mae": 1.3087035557701225,
+      "rmse": 1.746131904518536,
+      "wape": 0.3522799508613915
+    },
+    "Doxycycline 100 mg capsule": {
+      "mae": 1.6878028560394995,
+      "rmse": 2.3847128875898242,
+      "wape": 0.4612896694667342
+    },
+    "Famotidine 20 mg tablet": {
+      "mae": 1.2794466453003828,
+      "rmse": 1.7094097799285883,
+      "wape": 0.46328524889049394
+    },
+    "Fluticasone nasal spray": {
+      "mae": 1.2252336431590614,
+      "rmse": 1.6508316967583925,
+      "wape": 0.4391959792898478
+    },
+    "Gabapentin 300 mg capsule": {
+      "mae": 1.4278350590628128,
+      "rmse": 1.8702524034981054,
+      "wape": 0.3781642359399034
+    },
+    "Glipizide 5 mg tablet": {
+      "mae": 1.2789029728481982,
+      "rmse": 1.6927425531645683,
+      "wape": 0.5430262622807825
+    },
+    "Hydrochlorothiazide 25 mg tablet": {
+      "mae": 1.590757300676865,
+      "rmse": 2.1151282505099664,
+      "wape": 0.38078530463629656
+    },
+    "Ibuprofen 200 mg tablet": {
+      "mae": 9.630165936094578,
+      "rmse": 18.968782201406782,
+      "wape": 0.6011830543536288
+    },
+    "Insulin glargine 100 units/mL pen": {
+      "mae": 0.8408101032897134,
+      "rmse": 1.152515028077352,
+      "wape": 0.7466114610124426
+    },
+    "Levothyroxine 50 mcg tablet": {
+      "mae": 1.7212472434577784,
+      "rmse": 2.380447877315395,
+      "wape": 0.36651433840792497
+    },
+    "Lisinopril 10 mg tablet": {
+      "mae": 1.9108612686395645,
+      "rmse": 2.628254871383666,
+      "wape": 0.2770489915236225
+    },
+    "Losartan 50 mg tablet": {
+      "mae": 1.6464036060410125,
+      "rmse": 2.314534292674825,
+      "wape": 0.3587885658785913
+    },
+    "Metformin 500 mg tablet": {
+      "mae": 2.2199523648090453,
+      "rmse": 3.0583654366984514,
+      "wape": 0.2679468731354403
+    },
+    "Naloxone 4 mg nasal spray": {
+      "mae": 0.4092486746931257,
+      "rmse": 0.569397292799666,
+      "wape": 1.1373924205757
+    },
+    "Naproxen 500 mg tablet": {
+      "mae": 3.53232559640065,
+      "rmse": 7.034028980219371,
+      "wape": 0.5260387457409458
+    },
+    "Nirmatrelvir/ritonavir 300/100 mg pack": {
+      "mae": 0.8493782713852613,
+      "rmse": 1.3581033161881475,
+      "wape": 1.1504237346610502
+    },
+    "Omeprazole 20 mg capsule": {
+      "mae": 1.7447689996562272,
+      "rmse": 2.39544508682394,
+      "wape": 0.3246787529795066
+    },
+    "Oseltamivir 75 mg capsule": {
+      "mae": 1.0816609043297227,
+      "rmse": 1.7225059103166351,
+      "wape": 0.9644809730273362
+    },
+    "Prednisone 20 mg tablet": {
+      "mae": 3.6977259349600176,
+      "rmse": 7.275589441043384,
+      "wape": 0.6496825534330408
+    },
+    "Semaglutide 0.25/0.5 mg pen": {
+      "mae": 0.30814983111057676,
+      "rmse": 0.5445948282420342,
+      "wape": 1.156913401011639
+    },
+    "Sertraline 50 mg tablet": {
+      "mae": 1.6176680547716182,
+      "rmse": 2.129092620404731,
+      "wape": 0.382943543939299
+    },
+    "Simvastatin 40 mg tablet": {
+      "mae": 1.0445437975898038,
+      "rmse": 1.4087514085739143,
+      "wape": 0.4552594148354745
+    }
+  },
+  "drugs_trained": 30,
+  "history_start": "2023-01-01",
+  "history_end": "2025-12-31",
+  "signal_feature_count": 20,
+  "signal_source": "/root/projects/PULSE/model/artifacts/news/news_only_catalog_features.csv.gz",
+  "warnings": [],
+  "horizon_days": 14,
+  "trained_at": "2026-09-19T13:12:45.394971",
+  "forecast_rows": 420,
+  "use_model_signals": true,
+  "mode": "locked_synthetic_demo",
+  "dataset": "Arkansas synthetic daily pharmacy sales",
+  "source_rows": 32880
+}

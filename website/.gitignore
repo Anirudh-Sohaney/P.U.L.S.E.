@@ -1,0 +1,15 @@
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+*.egg-info/
+dist/
+build/
+*.joblib
+ml/models/
+data/cleaned_data.csv
+data/predictions.csv
+data/prediction_stats.json
+data/data_metadata.json
+data/uploads/
