@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .routes import auth, data, demand, health, model, predictions
+from .routes import auth, data, demand, health, model, predictions, purchasing
 
 
 @asynccontextmanager
@@ -48,5 +48,6 @@ def create_app() -> FastAPI:
     app.include_router(demand.router, prefix="/api/demand", tags=["Demand Forecast"])
     app.include_router(predictions.router, prefix="/api/predictions", tags=["Predictions"])
     app.include_router(model.router, prefix="/api/model", tags=["Model"])
+    app.include_router(purchasing.router, prefix="/api/purchasing", tags=["Purchasing Dashboard"])
 
     return app
