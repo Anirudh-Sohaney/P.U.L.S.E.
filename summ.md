@@ -1,6 +1,6 @@
 # Arkansas-First Pharmaceutical Forecasting Project Summary
 
-Last reviewed: 2026-09-14. Arkansas remains the primary geography, but the
+Last reviewed: 2026-09-19. Arkansas remains the primary geography, but the
 model is being expanded to use national, neighboring-state, and global context
 without relabeling those observations as Arkansas pharmacy truth.
 
@@ -10,6 +10,17 @@ Build an Arkansas-focused pharmaceutical forecasting system that can:
 - Forecast pharmaceutical demand, supply disruption risk, and shortage impact at a drug- and region-aware level.
 - Stay under a practical parameter budget by using a hybrid of regression, neural, and language-model-derived features rather than a single giant model.
 - Produce strong computed evidence that the model would improve real pharmacy inventory prediction.
+
+## Locked website demonstration
+
+`website/` is a reproducible, synthetic proof-of-concept rather than a claim
+of observed pharmacy operations. It uses 32,880 daily sales rows for 30 drugs,
+a catalog of 1,312 dated public-signal IDs (with 20 point-in-time-safe news
+features used by the website forecaster), and a deterministic synthetic
+inventory snapshot. The UI shows 1-, 4-, 7-, and 14-day demand, within-horizon
+stockout timing, a seven-day minimum purchase, and a 14-day target-stock order.
+This presentation does not change the research-model evidence or promotion
+status summarized below.
 
 ## Code Base Directory
 - Main model code: `model/arkansas_pharma_signal/`

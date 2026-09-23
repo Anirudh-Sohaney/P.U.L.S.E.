@@ -17,6 +17,8 @@ It is not an observed Arkansas pharmacy data release.
 | `per_drug_benchmark_results.md` | `547efbd33d19cc0ed8ac3509d3ca693111035077b31fe9b43072b595de6508fe` | product-level result summary |
 | `inspect_signal_selection.py` | `9825c3eabbc50548199129acd7ea7e576f09b78ea670f1f1223211050b01fb7b` | training-period signal-selection audit |
 | `selected_signal_diagnostics.csv` | `da4a72ec1391796efce9a09d6a851ce0fc39122bdef2237a2139e646912abf14` | selected-signal ranks and training correlations |
+| `../../website/data/demand_inventory_snapshot.csv` | `42c3c16076d1bc31d793b246240511a4072508b945a7e67317de6f9fd0874b91` | deterministic 30-product synthetic on-hand inventory scenario used by the locked website demo |
+| `../../website/ml/demand_forecast.py` | `8d08e56e8efc433dd2d043af7ca0b39c98e9b0f521e75462200fc533c45e52e7` | chronological forecast plus transparent inventory/replenishment policy |
 
 Regenerate the sales file with:
 
@@ -33,3 +35,6 @@ outbreak activity.
 The hashes above must be refreshed whenever an artifact is intentionally
 changed. A changed CSV requires a new benchmark run; prior metrics must not be
 carried over to the new file.
+
+The inventory snapshot is derived from the unchanged sales CSV, not observed
+inventory. Its policy and limitations are documented in `synthetic_guide.md`.

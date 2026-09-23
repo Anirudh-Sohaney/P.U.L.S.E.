@@ -18,6 +18,11 @@ stockouts, backorders, or wholesaler allocations. Every new signal therefore
 needs a point-in-time-safe target, a persistence or seasonal baseline, enough
 chronological held-out observations, and a reported promotion decision.
 
+The separate locked website demonstration derives a clearly labeled synthetic
+on-hand inventory snapshot from its synthetic daily-sales history. It does not
+add inventory evidence to, or change the promotion claims of, this research
+model.
+
 The latest focused local audit passes the expert-gold, input-contract, and
 ARCOS evaluation tests (`52 passed`, including CLI coverage). The full suite and forecast-quality
 gates still need to be run after each expansion. Passing tests are not evidence

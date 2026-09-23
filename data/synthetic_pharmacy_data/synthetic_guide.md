@@ -61,6 +61,23 @@ The major unexpected events considered were: the 2022–23 tripledemic carryover
 - Every deterministic shock is exposed in `injected_event_tags`; weekends and event days are not silently removed.
 - This is suitable for testing forecasting, anomaly detection, inventory logic, and dashboarding. It must not be used for clinical, reimbursement, procurement, or public-health decisions as if it were observed data.
 
+## Active-inventory demonstration
+
+The website derives a deterministic current-inventory snapshot from this sales history when the locked demo starts. It is not an Arkansas inventory release, not a perpetual-inventory ledger, and not evidence that any clinic holds a particular quantity.
+
+Each of the 30 rows records a synthetic facility identifier, medication and therapeutic class, on-hand units, on-order units, seven-day lead time, safety stock, reorder point, target stock, and 28-day trailing average demand. The on-hand variation is a fixed, documented scenario so users can inspect both covered and understocked products. No patient, supplier, lot, expiry, or controlled-substance record is simulated.
+
+The policy is deliberately simple and fully reproducible:
+
+```text
+safety stock = ceil(1.65 × trailing-28-day standard deviation × sqrt(7))
+reorder point = ceil(7 × trailing-28-day mean + safety stock)
+target stock = ceil(14 × trailing-28-day mean + safety stock)
+recommended order = max(0, target stock − on hand − on order)
+```
+
+The `1.65` factor and seven-day lead time are demonstration assumptions, not claimed service-level or delivery measurements for Arkansas. The formula makes the forecasting-to-stockout link auditable. CDC's drug-inventory study uses stock on hand to project depletion and resupply needs, while CMS guidance describes medication receipt, quantity, disposition, and periodic reconciliation as core accountability records. See [CDC](https://stacks.cdc.gov/view/cdc/121207/cdc_121207_DS1.pdf) and [CMS](https://www.cms.gov/regulations-and-guidance/guidance/transmittals/2017downloads/r173soma.pdf).
+
 For reproducibility hashes and the frozen benchmark inputs, see
 [`PROVENANCE.md`](PROVENANCE.md). The untouched-test protocol and its current
 limitations are documented in [`benchmark_protocol.md`](benchmark_protocol.md).

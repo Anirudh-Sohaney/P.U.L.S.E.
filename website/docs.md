@@ -1,4 +1,4 @@
-# Pulse — Project Specifications
+# Pulse — Demand and Replenishment Demo Specification
 
 ## Table of Contents
 
@@ -22,9 +22,19 @@
 
 ## Project Overview
 
-Build a professional web-based pharmacy risk prediction platform.
+Build a reproducible scientific proof-of-concept for per-drug demand forecasting and replenishment planning. The current interface accepts account-scoped sales and inventory uploads; the repository's synthetic Arkansas clinic records can be used as sample inputs. It makes no claim about observed Arkansas pharmacy inventory.
 
-The platform accepts pharmacy-related structured data, validates and preprocesses it, generates model features, runs an XGBoost model, and presents a risk prediction through a professional pharmacy analytics dashboard.
+The platform trains one direct next-14-day XGBoost demand regressor per drug from prior daily sales, using the selected benchmark procedure in `../test/run_publishable_benchmark.py`. Its 14-day prediction is allocated across individual days using recent day-of-week sales and combined with the uploaded on-hand inventory. It presents estimated demand and minimum-buy quantities at 1, 7, and 14 days, stockout timing, and a 14-day target-stock recommendation. The shorter-horizon allocations are not separately validated forecast models.
+
+### Current demonstration contract
+
+- **Sales history:** a user-uploaded CSV with at least 130 consecutive daily rows per drug. The 32,880-row, 30-product synthetic dataset from 2023-01-01 through 2025-12-31 is an optional demo input; its limitations are documented in `../data/synthetic_pharmacy_data/synthetic_guide.md`.
+- **News and public-signal context:** the frozen long-format catalog has 1,312 dated candidate series. For each drug, the model selects up to five by training-period absolute correlation with its direct 14-day target, then uses their 1-, 7-, and 14-day lags. The catalog is context and provenance, not 1,312 local demand measurements.
+- **Inventory:** the latest uploaded on-hand and on-order quantities for each drug. Lead time, safety stock, reorder point, and target stock use a transparent demonstration policy.
+- **Planning policy:** lead time is a seven-day demonstration assumption. The 14-day target is trailing mean demand plus normal-demand safety stock. Recommendations are demonstration outputs, not procurement instructions.
+- **Access:** each account can upload, retrain, and inspect only its own saved records and model.
+
+The generic research and risk-model sections retained below describe a broader project scaffold. They are not enabled in, or claims made by, the current demand-and-replenishment interface; the contract above is authoritative for the running website.
 
 ## Development Principles
 
@@ -52,17 +62,17 @@ Do not add frameworks or dependencies solely because they are popular. Choose si
 
 ### Data Sources
 
-Document every dataset or external source used by the project. For each source record: name, URL/reference, owner/provider, access method, license/terms, date accessed, variables used, known limitations, and whether data is public, synthetic, or user-provided. Never represent synthetic data as real pharmacy data.
+Document every dataset or external source used by the project. For each source record: name, URL/reference, owner/provider, access method, license/terms, date accessed, variables used, known limitations, and whether data is public, synthetic, or user-provided. Never represent synthetic data as real pharmacy data. The present demo's authoritative source documentation is `../data/synthetic_pharmacy_data/PROVENANCE.md` and `synthetic_guide.md`.
 
 ### Data Schema
 
 Define every accepted field with: field name, data type, description, unit, required/optional, valid range, missing-value policy.
 
-Potential fields: medication_id, medication_name, inventory_quantity, prescription_volume, historical_demand, supplier_id, supplier_lead_time, historical_shortage.
+Current demo sales fields are date, drug name, therapeutic class, units sold, synthetic unit price, revenue, stockout flag, and event tags. The active-inventory snapshot has facility ID, drug name, therapeutic class, on-hand and on-order units, lead time, safety stock, reorder point, target stock, and trailing-28-day average demand.
 
 ### Data Ingestion
 
-Pipeline: Receive data → Identify format/source → Parse data → Check schema → Validate → Pass valid data to preprocessing → Record ingestion status/errors. Support structured inputs such as CSV where appropriate.
+Locked pipeline: Load frozen sales and dated signals → validate continuous daily product history → train chronological per-drug XGBoost models → recursively forecast 14 days → derive deterministic inventory snapshot → calculate stockout and replenishment fields → serve authenticated API and UI. User ingestion is disabled in the current demo.
 
 ### Data Validation
 

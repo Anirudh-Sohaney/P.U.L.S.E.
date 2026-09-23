@@ -36,6 +36,28 @@ export async function login(username: string, password: string): Promise<string>
   return data.access_token
 }
 
+export async function register(username: string, password: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Registration failed' }))
+    throw new Error(err.detail || 'Registration failed')
+  }
+  const data = await res.json()
+  setToken(data.access_token)
+  return data.access_token
+}
+
+export async function trainUploadedData(sales: File, inventory: File): Promise<any> {
+  const form = new FormData()
+  form.append('sales_file', sales)
+  form.append('inventory_file', inventory)
+  return apiFetch('/demand/train', { method: 'POST', body: form })
+}
+
 export async function apiFetch(path: string, options: RequestInit = {}): Promise<any> {
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string> || {}),

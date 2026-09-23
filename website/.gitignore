@@ -13,3 +13,6 @@ data/predictions.csv
 data/prediction_stats.json
 data/data_metadata.json
 data/uploads/
+data/users/
+data/accounts.sqlite3
+data/.jwt_secret

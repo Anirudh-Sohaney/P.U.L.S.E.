@@ -34,15 +34,13 @@ risk, and shortage impact. Arkansas is the primary high-resolution test bed;
 broader signals are retained as contextual inputs. See `summ.md` and
 `model/docs/` for current evidence and limitations.
 
-### `website/` — Pharmacy Risk Prediction Platform
-XGBoost-based web platform for predicting pharmacy risks from structured data. React frontend, Python backend, full ML pipeline. See `website/README.md` and `website/docs.md`.
+### `website/` — Demand and replenishment demonstration
+Locked React/Python demonstration that trains chronological per-drug XGBoost forecasts from the reproducible synthetic clinic-sales history, joins only time-safe news signals, and pairs the result with a transparent synthetic on-hand inventory scenario. It displays demand at 1, 4, 7, and 14 days, forecast stockout timing, and demonstration replenishment quantities. See `website/README.md`, `website/docs.md`, and `data/synthetic_pharmacy_data/synthetic_guide.md`.
 
 ### `data/` — Supply/Demand Data
 CMS Part D quarterly data, FDA recalls, and other pharmaceutical datasets.
 
-The current repository does not claim direct pharmacy inventory truth. Public
-targets are proxies unless a source explicitly observes pharmacy fills,
-stockouts, backorders, or on-hand quantities.
+The current repository does not claim direct Arkansas pharmacy inventory truth. The website's on-hand inventory is explicitly synthetic and only demonstrates the connection between forecast demand and replenishment arithmetic. Public targets are proxies unless a source explicitly observes pharmacy fills, stockouts, backorders, or on-hand quantities.
 
 ### Synthetic pharmacy benchmark
 
