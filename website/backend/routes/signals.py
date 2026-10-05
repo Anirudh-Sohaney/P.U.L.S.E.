@@ -49,12 +49,12 @@ def catalog(search: str = Query("", max_length=120), limit: int = Query(1500, ge
 
 @router.post("/latest")
 def latest(query: LatestQuery):
-    """Return current usable values and separately flagged archived values."""
+    """Return usable values and the absolute latest recorded row for each ID."""
     rows = signal_store.values(query.ids, latest_only=True)
+    recorded = signal_store.values(query.ids, latest_only=True, include_unusable=True)
     found = {row["id"] for row in rows}
     missing_ids = [uid for uid in query.ids if uid not in found]
-    archived = [row for row in signal_store.values(
-        missing_ids, latest_only=True, include_unusable=True) if not row["usable"]]
+    archived = [row for row in recorded if row["id"] in missing_ids and not row["usable"]]
     coverage = ({row["id"]: row for row in signal_store.gap_report()["signals"]}
                 if missing_ids else {})
     missing_details = [{"id": uid,
@@ -62,10 +62,11 @@ def latest(query: LatestQuery):
                         "last_recorded_period": (coverage[uid]["latest_observation_date"]
                                                  if uid in coverage else None)}
                        for uid in missing_ids]
-    return {"values": rows, "unusable_recorded_values": archived,
+    return {"values": rows, "latest_recorded_values": recorded,
+            "unusable_recorded_values": archived,
             "missing_ids": missing_ids,
             "missing_details": missing_details,
-            "ambiguous_ids": sorted({row["id"] for row in [*rows, *archived]
+            "ambiguous_ids": sorted({row["id"] for row in [*rows, *recorded]
                                      if row["ambiguous"]})}
 
 

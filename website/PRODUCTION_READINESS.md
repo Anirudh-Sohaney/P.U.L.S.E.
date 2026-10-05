@@ -337,7 +337,7 @@ All routes are also described at `/docs` and in the frontend API guide.
 | Route | Meaning |
 | --- | --- |
 | `GET /api/v1/signals/catalog` | All 1,312 stable IDs, identity fields, units, source, and last period. Search and pagination are supported. |
-| `POST /api/v1/signals/latest` | Latest usable recorded observations in `values` for up to 1,500 IDs, including the full 1,312-ID catalog in one call. For IDs without a usable value, `unusable_recorded_values` contains their absolute latest archived row with the real date and reason; `missing_ids` and `missing_details` still report the usable-value gap. Unknown IDs have no archived row. Date filters are rejected; unresolved same-revision conflicts carry `ambiguous: true`. |
+| `POST /api/v1/signals/latest` | Latest usable recorded observations in `values` for up to 1,500 IDs, including the full 1,312-ID catalog in one call. `latest_recorded_values` contains the absolute latest stored row for every requested ID with a record, including unvalidated rows flagged `usable: false`. For IDs without a usable value, `unusable_recorded_values` highlights that archived row; `missing_ids` and `missing_details` report the usable-value gap. Unknown IDs have no recorded row. Date filters are rejected; unresolved same-revision conflicts carry `ambiguous: true`. |
 | `POST /api/v1/signals/history` | Recorded values for up to 100 IDs on an exact `date` or any `start_date`/`end_date` range, including the full available 2013–present history. The newest source revision for each period is returned by default; `include_revisions: true` returns each recorded revision for point-in-time training. Missing dates are absent. A request exceeding 10,000 raw source rows returns HTTP 413 with no truncated result; split IDs or dates. Browser training retries smaller ID batches automatically. |
 | `GET /api/v1/signals/freshness` | Catalog counts, latest periods, and last worker run. |
 | `GET /api/v1/signals/coverage` | Per-ID gap status and age of the latest observation. |
@@ -440,6 +440,9 @@ with a coverage reason and last recorded period; unknown IDs receive
 `unknown_id`. Its separate `unusable_recorded_values` array lets callers
 retrieve the absolute latest archived row without presenting it as a current
 observation or valid demand estimate.
+`latest_recorded_values` exposes the newest stored row for every requested ID,
+even when an older validated row remains in `values`; callers must inspect
+`usable` and `unusable_reason` before interpreting it.
 The publication check is fail-closed: a newly inserted ATC or news-model row
 with a different `source_kind` still remains unusable, and a Part D drug-model
 row is eligible for `/latest` only with the evaluated

@@ -356,6 +356,41 @@ def test_unvalidated_new_model_rows_cannot_be_published_as_latest(tmp_path, monk
         assert history["values"][0]["unusable_reason"] == reason
 
 
+def test_latest_exposes_newer_unvalidated_record_without_publishing_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "DATA_PATH", str(tmp_path))
+    signal_store.initialize()
+    definition = {"signal_origin": "derived_demand_output",
+                  "signal_id": "cms_part_d_demand_state::EXAMPLE",
+                  "cadence": "annual", "geography_level": "state",
+                  "geography_id": "AR", "entity_key": "EXAMPLE"}
+    uid = signal_store.signal_uid(definition)
+    with signal_store.connect() as db:
+        db.execute("""INSERT INTO signal_definitions
+            (id, signal_origin, signal_id, cadence, geography_level,
+             geography_id, entity_key) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (uid, *definition.values()))
+        for row_hash, target, value, source_kind in (
+            ("validated", "2026", 3, "cms_partd_two_year_persistence_v2"),
+            ("unvalidated", "2027", 4, "manual_refresh"),
+        ):
+            db.execute("""INSERT INTO signal_records
+                (row_hash, signal_uid, signal_date, observation_date, value,
+                 source_timestamp, ingested_at, forecast_horizon, source_kind)
+                VALUES (?, ?, '2024-12-31', '2024-12-31', ?,
+                 '2026-10-02T00:00:00+00:00', '2026-10-02T00:00:00+00:00', ?, ?)""",
+                (row_hash, uid, value, target, source_kind))
+    response = TestClient(create_app()).post("/api/v1/signals/latest", json={"ids": [uid]})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["values"][0]["value"] == 3
+    assert payload["values"][0]["forecast_horizon"] == "2026"
+    assert payload["latest_recorded_values"][0]["value"] == 4
+    assert payload["latest_recorded_values"][0]["forecast_horizon"] == "2027"
+    assert payload["latest_recorded_values"][0]["usable"] is False
+    assert payload["latest_recorded_values"][0]["unusable_reason"] == \
+        "drug_model_source_kind_not_evaluated_for_live_use"
+
+
 def test_recent_public_signals_show_latest_observation_and_recording_time(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "DATA_PATH", str(tmp_path))
     signal_store.initialize()
