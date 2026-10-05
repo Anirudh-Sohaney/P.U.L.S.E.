@@ -457,7 +457,10 @@ The worker captures the official 2026 Arkansas State Drug Utilization Data as
 a separate observed source. The first live snapshot contains only 2026 Q1. Of
 22,703 NDC/utilization rows, 12,264 have suppressed prescription counts. The
 API exposes the remaining reported count as a lower bound with the source
-period and suppression count. These quarterly statewide prescriptions cannot
+period and suppression count. The public signals page includes a collapsible,
+searchable table of the latest quarter's reported product names, sorted by
+that lower bound, with suppressed row counts visible. Names may be abbreviated
+in the source. These quarterly statewide prescriptions cannot
 be spliced into the monthly pharmacy-provider ATC target without a validated
 cross-source model, so the 18 ATC outputs remain unpublished.
 The checked-in NDC-to-ATC crosswalk covers only 2,236 of the 22,703 current
