@@ -21,7 +21,7 @@ FDA_DRUGS_RSS_URL = "https://www.fda.gov/AboutFDA/ContactFDA/StayInformed/RSSFee
 FDA_MEDWATCH_RSS_URL = "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/medwatch/rss.xml"
 NEWS_QUERY = '("drug shortage" OR "medicine shortage" OR "pharmacy demand" OR "medication supply")'
 RELEVANT_TERMS = ("drug", "medicine", "medication", "pharmacy", "shortage", "supply", "recall")
-FDA_EVENT_TERMS = ("shortage", "recall", "approves", "approval", "warning", "safety alert",
+FDA_EVENT_TERMS = ("shortage", "recall", "approves", "warning", "safety alert",
                    "concerns", "discontinuation", "supply", "manufacturing")
 MEDWATCH_DRUG_TERMS = ("drug", "medicine", "medication", "pharma", "compounded",
                        "tablet", "capsule", "injection", "injectable", "infusion",
@@ -169,7 +169,7 @@ def refresh_news(sources: tuple[str, ...] | None = None) -> dict:
                     db.execute("""DELETE FROM news_articles WHERE source='FDA Drugs RSS'
                         AND (instr(lower(title), 'approval notifications') > 0
                         OR NOT (lower(title) LIKE '%shortage%' OR lower(title) LIKE '%recall%'
-                          OR lower(title) LIKE '%approves%' OR lower(title) LIKE '%approval%'
+                          OR lower(title) LIKE '%approves%'
                           OR lower(title) LIKE '%warning%' OR lower(title) LIKE '%safety alert%'
                           OR lower(title) LIKE '%concerns%' OR lower(title) LIKE '%discontinuation%'
                           OR lower(title) LIKE '%supply%' OR lower(title) LIKE '%manufacturing%'))""")

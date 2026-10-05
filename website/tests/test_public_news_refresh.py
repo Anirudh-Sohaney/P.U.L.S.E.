@@ -52,6 +52,43 @@ def _article(source: str, url: str) -> dict:
             "relevance_score": 2, "matched_terms": "drug,shortage"}
 
 
+def test_fda_drug_feed_excludes_evergreen_approval_indexes(monkeypatch):
+    published = format_datetime(datetime.now(timezone.utc))
+    feed = f"""<rss><channel>
+      <item><title>First Generic Drug Approvals</title>
+        <link>https://www.fda.gov/drugs/first-generic-drug-approvals</link>
+        <pubDate>{published}</pubDate></item>
+      <item><title>Ongoing | Cancer Accelerated Approvals</title>
+        <link>https://www.fda.gov/drugs/ongoing-approvals</link>
+        <pubDate>{published}</pubDate></item>
+      <item><title>FDA Approves Example Drug for Treatment</title>
+        <link>https://www.fda.gov/drugs/fda-approves-example-drug</link>
+        <pubDate>{published}</pubDate></item>
+      <item><title>Example Drug Shortage Update</title>
+        <link>https://www.fda.gov/drugs/example-shortage</link>
+        <pubDate>{published}</pubDate></item>
+    </channel></rss>""".encode()
+    monkeypatch.setattr(refresh_public, "urlopen", lambda request, timeout: io.BytesIO(feed))
+    titles = [row["title"] for row in refresh_public.fetch_fda_drug_updates()]
+    assert titles == ["FDA Approves Example Drug for Treatment", "Example Drug Shortage Update"]
+
+
+def test_fda_refresh_removes_stored_approval_index_pages(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "DATA_PATH", str(tmp_path))
+    signal_store.initialize()
+    title = "First Generic Drug Approvals"
+    with signal_store.connect() as db:
+        db.execute("""INSERT INTO news_articles
+            (url_hash, title, url, source, published_at, timestamp_kind,
+             fetched_at, relevance_score, matched_terms)
+            VALUES (?, ?, ?, 'FDA Drugs RSS', ?, 'rss_pub_date', ?, 1, 'drug')""",
+            ("approval-index", title, "https://www.fda.gov/drugs/first-generic-drug-approvals",
+             datetime.now(timezone.utc).isoformat(), datetime.now(timezone.utc).isoformat()))
+    monkeypatch.setattr(refresh_public, "fetch_fda_drug_updates", lambda: [])
+    refresh_public.refresh_news(("fda_drugs_rss",))
+    assert signal_store.recent_news() == []
+
+
 def test_fda_success_keeps_gdelt_failure_visible(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "DATA_PATH", str(tmp_path))
 
