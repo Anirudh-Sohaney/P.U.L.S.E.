@@ -89,6 +89,26 @@ def test_fda_refresh_removes_stored_approval_index_pages(tmp_path, monkeypatch):
     assert signal_store.recent_news() == []
 
 
+def test_fda_recalls_feed_keeps_drug_recall_and_excludes_food(monkeypatch):
+    published = format_datetime(datetime.now(timezone.utc))
+    feed = f"""<rss><channel>
+      <item><title>Greenwich Rx Recalls Compounded Glutathione</title>
+        <link>http://www.fda.gov/safety/recalls-market-withdrawals-safety-alerts/glutathione</link>
+        <description>A compounding pharmacy is recalling the medication.</description>
+        <pubDate>{published}</pubDate></item>
+      <item><title>Bakery Recalls Bread</title>
+        <link>https://www.fda.gov/safety/recalls-market-withdrawals-safety-alerts/bread</link>
+        <description>Undeclared milk in bread.</description>
+        <pubDate>{published}</pubDate></item>
+    </channel></rss>""".encode()
+    monkeypatch.setattr(refresh_public, "urlopen", lambda request, timeout: io.BytesIO(feed))
+    rows = refresh_public.fetch_fda_drug_recalls()
+    assert len(rows) == 1
+    assert rows[0]["title"] == "Greenwich Rx Recalls Compounded Glutathione"
+    assert rows[0]["source"] == "FDA Recalls RSS"
+    assert rows[0]["url"].startswith("https://www.fda.gov/")
+
+
 def test_fda_success_keeps_gdelt_failure_visible(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "DATA_PATH", str(tmp_path))
 
@@ -99,26 +119,30 @@ def test_fda_success_keeps_gdelt_failure_visible(tmp_path, monkeypatch):
     monkeypatch.setattr(refresh_public, "fetch_fda_drug_updates", lambda: [
         _article("FDA Drugs RSS", "https://www.fda.gov/drug-shortage")])
     monkeypatch.setattr(refresh_public, "fetch_fda_medwatch_updates", lambda: [])
+    monkeypatch.setattr(refresh_public, "fetch_fda_drug_recalls", lambda: [])
     result = refresh_public.refresh_news()
-    assert [row["status"] for row in result["sources"]] == ["failed", "success", "success"]
+    assert [row["status"] for row in result["sources"]] == ["failed", "success", "success", "success"]
     with signal_store.connect() as db:
         runs = [tuple(row) for row in db.execute("""SELECT source_name, status, error
             FROM refresh_runs ORDER BY id""")]
         articles = db.execute("SELECT COUNT(*) FROM news_articles").fetchone()[0]
     assert runs == [("gdelt_recent_news", "failed", "rate limited"),
                     ("fda_drugs_rss", "success", None),
-                    ("fda_medwatch_rss", "success", None)]
+                    ("fda_medwatch_rss", "success", None),
+                    ("fda_recalls_rss", "success", None)]
     assert articles == 1
     assert signal_store.recent_news()[0]["timestamp_kind"] == "rss_pub_date"
     checks = {row["source_name"]: row for row in signal_store.freshness()["source_checks"]}
     assert checks["gdelt_recent_news"]["last_status"] == "failed"
     assert checks["fda_drugs_rss"]["last_status"] == "success"
     assert checks["fda_medwatch_rss"]["last_status"] == "success"
+    assert checks["fda_recalls_rss"]["last_status"] == "success"
     public = TestClient(create_app()).get("/api/v1/signals/news/recent").json()
     assert public["count"] == 1
     assert public["source_checks"]["gdelt_recent_news"]["last_status"] == "failed"
     assert public["source_checks"]["fda_drugs_rss"]["last_status"] == "success"
     assert public["source_checks"]["fda_medwatch_rss"]["last_status"] == "success"
+    assert public["source_checks"]["fda_recalls_rss"]["last_status"] == "success"
     assert public["source_checks"]["gdelt_recent_news"]["last_success_at"] is None
 
 
@@ -131,12 +155,13 @@ def test_both_news_failures_are_recorded(tmp_path, monkeypatch):
     monkeypatch.setattr(refresh_public, "fetch_recent_news", unavailable)
     monkeypatch.setattr(refresh_public, "fetch_fda_drug_updates", unavailable)
     monkeypatch.setattr(refresh_public, "fetch_fda_medwatch_updates", unavailable)
+    monkeypatch.setattr(refresh_public, "fetch_fda_drug_recalls", unavailable)
     with pytest.raises(RuntimeError, match="All public news sources failed: gdelt_recent_news: source unavailable"):
         refresh_public.refresh_news()
     with signal_store.connect() as db:
         statuses = [row[0] for row in db.execute(
             "SELECT status FROM refresh_runs ORDER BY id")]
-    assert statuses == ["failed", "failed", "failed"]
+    assert statuses == ["failed", "failed", "failed", "failed"]
 
 
 def test_existing_news_dates_gain_explicit_source_semantics(tmp_path, monkeypatch):

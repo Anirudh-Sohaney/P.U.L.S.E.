@@ -91,6 +91,7 @@ export default function SignalsPage() {
     gdelt_recent_news: 'general news (GDELT)',
     fda_drugs_rss: 'FDA Drugs RSS',
     fda_medwatch_rss: 'FDA MedWatch RSS',
+    fda_recalls_rss: 'FDA Recalls RSS',
   }
   const failedNewsSources = Object.entries(newsSources ?? {})
     .filter(([, check]) => check.last_status === 'failed')
