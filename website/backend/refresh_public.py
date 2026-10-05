@@ -21,6 +21,7 @@ GDELT_DOC_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
 FDA_DRUGS_RSS_URL = "https://www.fda.gov/AboutFDA/ContactFDA/StayInformed/RSSFeeds/Drugs/rss.xml"
 FDA_MEDWATCH_RSS_URL = "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/medwatch/rss.xml"
 FDA_RECALLS_RSS_URL = "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/recalls/rss.xml"
+FDA_PRESS_RSS_URL = "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/press-releases/rss.xml"
 NEWS_QUERY = '("drug shortage" OR "medicine shortage" OR "pharmacy demand" OR "medication supply")'
 RELEVANT_TERMS = ("drug", "medicine", "medication", "pharmacy", "shortage", "supply", "recall")
 FDA_EVENT_TERMS = ("shortage", "recall", "approves", "warning", "safety alert",
@@ -31,6 +32,8 @@ MEDWATCH_DRUG_TERMS = ("drug", "medicine", "medication", "pharma", "compounded",
 DRUG_RECALL_TERMS = ("drug", "medicine", "medication", "pharmacy", "pharmaceutical",
                      "compounded", "prescription", "injectable", "injection", "tablet",
                      "tablets", "vial", "vials", "insulin", "antibiotic")
+FDA_PRESS_EVENT_TERMS = ("approv", "recall", "shortage", "safety", "warning",
+                         "treatment", "research", "drug", "medicine", "medication")
 
 
 def fetch_recent_news(*, timeout: int = 25) -> list[dict]:
@@ -188,13 +191,50 @@ def fetch_fda_drug_recalls(*, timeout: int = 25) -> list[dict]:
     return output
 
 
+def fetch_fda_drug_press(*, timeout: int = 25) -> list[dict]:
+    """Drug-related FDA press announcements; these are context, not demand data."""
+    request = Request(FDA_PRESS_RSS_URL, headers={
+        "User-Agent": "PULSE-public-signal-monitor/1.0"})
+    with urlopen(request, timeout=timeout) as response:
+        root = ElementTree.fromstring(response.read(2 * 1024 * 1024))
+    cutoff = datetime.now(timezone.utc) - timedelta(days=3)
+    output = []
+    for item in root.findall("./channel/item"):
+        title = (item.findtext("title") or "").strip()
+        description = (item.findtext("description") or "").strip()
+        url = (item.findtext("link") or "").strip().replace(
+            "http://www.fda.gov/", "https://www.fda.gov/", 1)
+        lowered_title = title.lower()
+        matches = [term for term in DRUG_RECALL_TERMS
+                   if re.search(rf"\b{re.escape(term)}\b", f"{title} {description}".lower())]
+        if (not title or not matches or not any(term in lowered_title for term in FDA_PRESS_EVENT_TERMS)
+                or not url.startswith("https://www.fda.gov/news-events/press-announcements/")):
+            continue
+        try:
+            published = parsedate_to_datetime((item.findtext("pubDate") or "").strip())
+        except (TypeError, ValueError):
+            continue
+        if published.tzinfo is None:
+            published = published.replace(tzinfo=ZoneInfo("America/New_York"))
+        published = published.astimezone(timezone.utc)
+        if published < cutoff or published > datetime.now(timezone.utc) + timedelta(minutes=5):
+            continue
+        output.append({"url_hash": hashlib.sha256(url.encode()).hexdigest(),
+                       "title": title[:500], "url": url, "source": "FDA Press RSS",
+                       "published_at": published.isoformat(),
+                       "relevance_score": len(matches),
+                       "matched_terms": ",".join(matches)})
+    return output
+
+
 def refresh_news(sources: tuple[str, ...] | None = None) -> dict:
     initialize()
     results = []
     fetchers = {"gdelt_recent_news": fetch_recent_news,
                 "fda_drugs_rss": fetch_fda_drug_updates,
                 "fda_medwatch_rss": fetch_fda_medwatch_updates,
-                "fda_recalls_rss": fetch_fda_drug_recalls}
+                "fda_recalls_rss": fetch_fda_drug_recalls,
+                "fda_press_rss": fetch_fda_drug_press}
     selected = sources or tuple(fetchers)
     if any(name not in fetchers for name in selected):
         raise ValueError("Unknown public news source")
@@ -263,3 +303,7 @@ def refresh_fda_medwatch_news() -> dict:
 
 def refresh_fda_recalls_news() -> dict:
     return refresh_news(("fda_recalls_rss",))
+
+
+def refresh_fda_press_news() -> dict:
+    return refresh_news(("fda_press_rss",))

@@ -15,7 +15,8 @@ from pathlib import Path
 
 from .config import settings
 from .refresh_public import (refresh_gdelt_news, refresh_fda_drugs_news,
-                             refresh_fda_medwatch_news, refresh_fda_recalls_news)
+                             refresh_fda_medwatch_news, refresh_fda_recalls_news,
+                             refresh_fda_press_news)
 from .refresh_shortages import refresh_shortages
 from .refresh_bls import refresh_bls
 from .refresh_medicaid import refresh_medicaid
@@ -39,6 +40,7 @@ REFRESH_TASKS: tuple[tuple[Callable[[], dict], tuple[str, ...]], ...] = (
     (refresh_fda_drugs_news, ("fda_drugs_rss",)),
     (refresh_fda_medwatch_news, ("fda_medwatch_rss",)),
     (refresh_fda_recalls_news, ("fda_recalls_rss",)),
+    (refresh_fda_press_news, ("fda_press_rss",)),
     (refresh_shortages, ("openfda_shortages",)),
     (refresh_bls, ("bls_public_api_v1",)),
     (refresh_medicaid, ("medicaid_state_performance_api",)),

@@ -85,7 +85,7 @@ jobs:
       - name: Build worker image and check task imports
         run: |
           docker compose -f website/docker-compose.yml build worker
-          docker compose -f website/docker-compose.yml run --rm --no-deps worker python -c "from backend.worker import REFRESH_TASKS; assert len(REFRESH_TASKS) == 13"
+          docker compose -f website/docker-compose.yml run --rm --no-deps worker python -c "from backend.worker import REFRESH_TASKS; assert len(REFRESH_TASKS) == 14"
       - name: Publish evaluated baseline and rehearse Compose backup
         run: |
           docker compose -f website/docker-compose.yml run --rm --no-deps worker python -c "from backend.refresh_demand_baseline import refresh_demand_baseline; result=refresh_demand_baseline(); assert result['drugs'] > 0"

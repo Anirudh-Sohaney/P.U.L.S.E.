@@ -679,7 +679,7 @@ def news_source_checks() -> dict[str, dict]:
     checks = {}
     with connect() as db:
         for name in ("gdelt_recent_news", "fda_drugs_rss", "fda_medwatch_rss",
-                     "fda_recalls_rss"):
+                     "fda_recalls_rss", "fda_press_rss"):
             latest = db.execute("""SELECT finished_at, status FROM refresh_runs
                 WHERE source_name=? ORDER BY id DESC LIMIT 1""", (name,)).fetchone()
             success = db.execute("""SELECT MAX(finished_at) FROM refresh_runs

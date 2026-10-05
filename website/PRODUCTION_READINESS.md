@@ -46,9 +46,9 @@ python -m backend.main
 
 Run `python -m backend.worker` as a separate long-running process for a daily
 refresh at **16:00 UTC**. On startup, it catches up any source that has no
-successful run since the most recent scheduled time. FDA Drugs, MedWatch, and
-Recalls RSS feeds provide official drug-event context. The Recalls adapter
-keeps drug-related items from the broader FDA feed. Each news feed has its own
+successful run since the most recent scheduled time. FDA Drugs, MedWatch,
+Recalls, and Press RSS feeds provide official drug-event context. The Recalls
+and Press adapters keep drug-related items from broader FDA feeds. Each news feed has its own
 schedule and failure status, so a failed GDELT retry does not delay the FDA
 feeds. `--once` forces every adapter to run.
 The GDELT adapter retries transient connection failures and HTTP 5xx responses
@@ -195,7 +195,7 @@ available rather than claiming the full audit is clean.
 The backend image uses the official Python 3.14 slim image and a 35-package
 exact-version runtime lock. Legacy server-side XGBoost and scikit-learn are
 absent. A clean Python 3.14 environment installed that lock with wheels only,
-loaded the API and thirteen worker tasks, registered and authenticated an
+loaded the API and fourteen worker tasks, registered and authenticated an
 Argon2id account. The previous lock also evaluated the four CMS baseline folds,
 served the 1,312-ID catalog, and passed a restored snapshot rehearsal; the
 new lock adds only Argon2id bindings. Docker is unavailable on this laptop, so the container
@@ -577,6 +577,7 @@ news-model runner, or provide a daily news-conditioned drug forecast.
 | [FDA Drugs RSS](https://www.fda.gov/about-fda/contact-fda/subscribe-podcasts-and-news-feeds) | Checked independently each day for recent FDA drug approval, recall, shortage, and safety event titles, even when GDELT fails. A named medicine can qualify without a generic “drug” keyword; generic approval-notification index pages are excluded. A feed update is not necessarily the date a medical event occurred. | No key. |
 | [FDA MedWatch RSS](https://www.fda.gov/safety/medwatch-fda-safety-information-and-adverse-event-reporting-program/medwatch-rss-feed) | Checked independently for drug-keyword safety alerts. Device-only paths and items without drug terms are excluded; an empty three-day window stays empty. The RSS date is the feed item date, not a demand observation. | No key. |
 | [FDA Recalls RSS](https://www.fda.gov/about-fda/contact-fda/subscribe-podcasts-and-news-feeds) | Checked independently for recent drug-related recall notices. Food-only notices are excluded. The RSS date is the feed item date, not a demand observation. | No key. |
+| [FDA Press Releases RSS](https://www.fda.gov/about-fda/contact-fda/subscribe-podcasts-and-news-feeds) | Checked independently for recent drug-related announcements. Device-only and general regulatory releases are excluded. The RSS date is the feed item date, not a demand observation. | No key. |
 | [BLS Public Data API](https://www.bls.gov/developers/api_faqs.htm) | Daily poll of three published monthly series through unregistered v1; records source months and preliminary flags, and derives the catalog's preceding-observation lags, differences, rolling values, and same-month historical baselines/anomalies. The first retrieval time is stored because the response omits a publication timestamp. | No key for v1. The current three-series history refresh uses nine queries per daily run, within its 25-query/day limit; registered v2 has higher limits but is not used. |
 | [Medicaid and CHIP enrollment and performance](https://data.medicaid.gov/dataset/6165f45b-ca93-5bb5-9d06-db29c692a360) | Daily poll of eight Arkansas monthly measures via the official data API. Preliminary and final revisions are distinguished; absent cells are skipped. The first retrieval time is stored because the row publication timestamp is unavailable. | No key for the public data API. |
 | [CMS Medicare Geographic Variation](https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-geographic-comparisons/medicare-geographic-variation-by-national-state-county) | Daily check of nine national annual catalog measures. The latest official year is 2024 as of this check; no 2025 or 2026 value is inferred. | Public data API, no key. |
@@ -607,7 +608,9 @@ and retains drug-keyword safety items, excluding device-only alerts.
 The fourth adapter reads FDA's official Recalls RSS feed and retains drug-related
 notices while excluding food-only recalls. Its first local run found no
 qualifying items in the three-day display window.
-The freshness endpoint keeps independent status for all four feeds; working
+The fifth adapter reads FDA's official Press Releases RSS feed and retains
+drug-related announcements while excluding device-only releases.
+The freshness endpoint keeps independent status for all five feeds; working
 FDA feeds do not claim broad news coverage. Do not fill
 the missing GDELT window with inferred articles or model-news values. A cloud
 host should monitor `failed_sources` and verify its own access to GDELT before
