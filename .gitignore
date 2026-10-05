@@ -1,4 +1,6 @@
 .venv/
+/test/
+/test_data/*.csv
 website/frontend/.vite/
 __pycache__/
 *.pyc

@@ -13,7 +13,8 @@ from .universal_forecast import TARGET_METADATA
 
 
 DEFAULT_KEYS = ["forecast_period", "geography_level", "geography_id",
-                "county_fips", "drug_key", "labeler", "supplier"]
+                "county_fips", "drug_key", "therapeutic_class", "pathogen",
+                "labeler", "supplier"]
 
 
 def _feature_name(target: str) -> str:
@@ -51,7 +52,8 @@ def build_metric_feature_store(rows: pd.DataFrame,
     # CSV readers commonly reinterpret intentionally empty optional allocation
     # fields as NaN. Normalize only those fields; period/geography/target keys
     # remain strict and continue to fail closed when absent.
-    for column in ("county_fips", "drug_key", "labeler", "supplier"):
+    for column in ("county_fips", "drug_key", "therapeutic_class",
+                   "pathogen", "labeler", "supplier"):
         if column in keys:
             frame[column] = frame[column].fillna("").astype(str)
     if frame[keys + ["target"]].isna().any().any():

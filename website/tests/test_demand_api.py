@@ -12,11 +12,15 @@ from backend.config import settings
 def _register(client: TestClient, username: str) -> dict[str, str]:
     response = client.post("/api/auth/register", json={"username": username, "password": "test-password-123"})
     assert response.status_code == 201
-    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+    token = client.post("/api/auth/token", data={"username": username,
+                                                  "password": "test-password-123"})
+    assert token.status_code == 200
+    return {"Authorization": f"Bearer {token.json()['access_token']}"}
 
 
 def test_uploaded_sales_train_direct_model_and_remain_account_scoped(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "DATA_PATH", str(tmp_path / "demand-data"))
+    monkeypatch.setattr(settings, "ENABLE_LEGACY_SERVER_TRAINING", True)
     client = TestClient(create_app())
     alice = _register(client, "alice")
     bob = _register(client, "bob")

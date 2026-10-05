@@ -1,8 +1,10 @@
+import json
+
 import pandas as pd
 import pytest
 
 from arkansas_pharma_signal.metric_feature_store import (
-    attach_qualified_metric_features, build_metric_feature_store,
+    DEFAULT_KEYS, attach_qualified_metric_features, build_metric_feature_store,
     join_metric_features, metric_context_vector,
 )
 from scripts.build_metric_feature_store import build_feature_store_file
@@ -11,7 +13,8 @@ from scripts.build_metric_feature_store import build_feature_store_file
 def _rows():
     return pd.DataFrame([
         {"forecast_period": "2026-08", "geography_level": "national_ndc",
-         "geography_id": "US", "county_fips": "", "drug_key": "1", "labeler": "",
+         "geography_id": "US", "county_fips": "", "drug_key": "1",
+         "therapeutic_class": "A02", "pathogen": "", "labeler": "",
          "supplier": "",
          "target": "national_weekly_fluview_respiratory_pressure_state", "prediction": 2,
          "target_promotion_status": "qualified_five_state_proxy",
@@ -25,8 +28,7 @@ def test_metric_feature_store_preserves_grain_and_metadata():
     store, metadata = build_metric_feature_store(_rows())
     assert store.loc[0, "metric__national_weekly_fluview_respiratory_pressure_state"] == 2
     assert metadata["feature_count"] == 1
-    base = _rows()[["forecast_period", "geography_level", "geography_id",
-                    "county_fips", "drug_key", "labeler", "supplier"]].copy()
+    base = _rows()[DEFAULT_KEYS].copy()
     joined = join_metric_features(base, store)
     assert joined.shape[0] == 1
 
@@ -48,10 +50,12 @@ def test_metric_feature_store_rejects_invalid_state_values():
 def test_attach_preserves_exact_grain_and_exposes_missingness():
     base = pd.DataFrame([
         {"forecast_period": "2026-08", "geography_level": "national_ndc",
-         "geography_id": "US", "county_fips": "", "drug_key": "1", "labeler": "",
+         "geography_id": "US", "county_fips": "", "drug_key": "1",
+         "therapeutic_class": "A02", "pathogen": "", "labeler": "",
          "supplier": ""},
         {"forecast_period": "2026-08", "geography_level": "county",
-         "geography_id": "05001", "county_fips": "05001", "drug_key": "1", "labeler": "",
+         "geography_id": "05001", "county_fips": "05001", "drug_key": "1",
+         "therapeutic_class": "A02", "pathogen": "", "labeler": "",
          "supplier": ""},
     ])
     joined, metadata = attach_qualified_metric_features(base, _rows())
@@ -73,17 +77,63 @@ def test_default_feature_grain_preserves_supplier_rows():
     assert set(store["supplier"]) == {"", "supplier-b"}
 
 
+def test_default_feature_grain_preserves_class_and_pathogen_rows():
+    rows = pd.concat([
+        _rows(),
+        _rows().assign(therapeutic_class="A03", prediction=1),
+        _rows().assign(pathogen="influenza", prediction=3),
+    ], ignore_index=True)
+    store, _ = build_metric_feature_store(rows)
+    assert len(store) == 3
+    assert set(store["therapeutic_class"]) == {"A02", "A03"}
+    assert set(store["pathogen"]) == {"", "influenza"}
+
+
 def test_feature_store_script_writes_hashed_metadata(tmp_path):
     source = tmp_path / "forecast.csv.gz"
     output = tmp_path / "features.csv.gz"
     metadata = tmp_path / "features.json"
+    audit = tmp_path / "audit.json"
     _rows().to_csv(source, index=False, compression="gzip")
-    result = build_feature_store_file(source, output, metadata)
+    audit.write_text(json.dumps({
+        "protocol": "test",
+        "target_validity": {"passed": True},
+        "candidates": [{"metric": "national_weekly_fluview_respiratory_pressure_state",
+                        "status": "qualified_proxy", "reasons": []}],
+    }))
+    result = build_feature_store_file(source, output, metadata, audit)
     assert result["source_rows"] == 1
     assert result["output_rows"] == 1
     assert len(result["source_sha256"]) == 64
+    assert len(result["audit_sha256"]) == 64
     assert len(result["output_sha256"]) == 64
     assert metadata.exists()
+
+
+def test_feature_store_script_requires_explicit_rejected_target_filter(tmp_path):
+    source = tmp_path / "forecast.csv.gz"
+    output = tmp_path / "features.csv.gz"
+    metadata = tmp_path / "features.json"
+    audit = tmp_path / "audit.json"
+    rejected = "rejected_metric"
+    pd.concat([_rows(), _rows().assign(target=rejected)],
+              ignore_index=True).to_csv(source, index=False, compression="gzip")
+    audit.write_text(json.dumps({
+        "protocol": "test", "target_validity": {"passed": True},
+        "candidates": [
+            {"metric": "national_weekly_fluview_respiratory_pressure_state",
+             "status": "qualified_proxy", "reasons": []},
+            {"metric": rejected, "status": "rejected", "reasons": ["no_validation"]},
+        ],
+    }))
+    with pytest.raises(ValueError, match="rejected by metric audit"):
+        build_feature_store_file(source, output, metadata, audit)
+    result = build_feature_store_file(source, output, metadata, audit,
+                                      qualified_only=True)
+    assert result["source_rows"] == 2
+    assert result["eligible_rows"] == 1
+    assert result["excluded_targets"] == [rejected]
+    assert result["feature_count"] == 1
 
 
 def test_context_projection_matches_statewide_context_without_drug_broadcast():
@@ -121,8 +171,7 @@ def test_context_projection_supports_statewide_period_only_signal():
 
 def test_metric_context_vector_has_stable_value_then_missing_order():
     joined, metadata = attach_qualified_metric_features(
-        _rows(), _rows()[["forecast_period", "geography_level", "geography_id",
-                          "county_fips", "drug_key", "labeler", "supplier",
+        _rows(), _rows()[[*DEFAULT_KEYS,
                           "target", "prediction", "target_promotion_status",
                           "target_semantics", "target_cadence", "source_freshness",
                           "driver_attribution", "uncertainty_status",

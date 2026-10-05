@@ -15,6 +15,7 @@
   ],
   "local_raw_input": "/tmp/cms_geo_years",
   "normalized_output": "data/targeted_additions/cms_partd_geography_drug/data/arkansas_partd_geography_drug_by_year.csv.gz",
+  "normalized_sha256": "aba1254e872d9f9f996e029aa1352e4afa3d5adb44db7c9038bc5e6a8e557fcb",
   "years": [
     2013,
     2014,

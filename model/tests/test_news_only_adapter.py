@@ -31,3 +31,14 @@ def test_news_only_adapter_validates_schema_and_annualizes(tmp_path):
 def test_news_only_signal_ids_are_unique_and_fixed():
     assert len(NEWS_ONLY_SIGNAL_IDS) == 20
     assert len(set(NEWS_ONLY_SIGNAL_IDS)) == 20
+
+
+def test_bundled_news_output_is_used_in_clean_checkout(tmp_path):
+    cfg = Config(root=str(tmp_path))
+    source = _source(tmp_path)
+    bundled = tmp_path / "website/catalog/news_only_catalog_features.csv.gz"
+    bundled.parent.mkdir(parents=True)
+    pd.read_csv(source).to_csv(bundled, index=False, compression="gzip")
+    monthly = load_news_only_features(cfg)
+    assert len(monthly) == 2
+    assert monthly["date"].dt.strftime("%Y-%m").tolist() == ["2024-01", "2024-02"]

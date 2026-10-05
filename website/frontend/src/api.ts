@@ -1,27 +1,41 @@
 const API_BASE = '/api'
 
-let _token: string | null = localStorage.getItem('token')
-
-export function setToken(token: string) {
-  _token = token
-  localStorage.setItem('token', token)
-}
-
-export function getToken(): string | null {
-  return _token
-}
-
-export function clearToken() {
-  _token = null
+try {
   localStorage.removeItem('token')
+} catch {
+  // Cookie sessions still work when browser storage is unavailable.
 }
 
-export async function login(username: string, password: string): Promise<string> {
+export class ApiError extends Error {
+  constructor(message: string, public status: number, public retryAfterSeconds: number | null = null) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
+function csrfToken(): string | null {
+  const item = document.cookie.split('; ').find(cookie => cookie.startsWith('pulse_csrf='))
+  return item ? decodeURIComponent(item.slice('pulse_csrf='.length)) : null
+}
+
+export async function isSignedIn(): Promise<boolean> {
+  try { await apiFetch('/auth/me'); return true } catch { return false }
+}
+
+export async function logout(): Promise<void> {
+  await apiFetch('/auth/logout', { method: 'POST' })
+}
+
+export async function logoutAll(): Promise<void> {
+  await apiFetch('/auth/logout-all', { method: 'POST' })
+}
+
+export async function login(username: string, password: string): Promise<void> {
   const formData = new URLSearchParams()
   formData.append('username', username)
   formData.append('password', password)
 
-  const res = await fetch(`${API_BASE}/auth/token`, {
+  const res = await fetch(`${API_BASE}/auth/session`, {
     method: 'POST',
     body: formData,
   })
@@ -31,12 +45,9 @@ export async function login(username: string, password: string): Promise<string>
     throw new Error(err.detail || 'Login failed')
   }
 
-  const data = await res.json()
-  setToken(data.access_token)
-  return data.access_token
 }
 
-export async function register(username: string, password: string): Promise<string> {
+export async function register(username: string, password: string): Promise<void> {
   const res = await fetch(`${API_BASE}/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -46,16 +57,6 @@ export async function register(username: string, password: string): Promise<stri
     const err = await res.json().catch(() => ({ detail: 'Registration failed' }))
     throw new Error(err.detail || 'Registration failed')
   }
-  const data = await res.json()
-  setToken(data.access_token)
-  return data.access_token
-}
-
-export async function trainUploadedData(sales: File, inventory: File): Promise<any> {
-  const form = new FormData()
-  form.append('sales_file', sales)
-  form.append('inventory_file', inventory)
-  return apiFetch('/demand/train', { method: 'POST', body: form })
 }
 
 export async function apiFetch(path: string, options: RequestInit = {}): Promise<any> {
@@ -63,51 +64,26 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
     ...(options.headers as Record<string, string> || {}),
   }
 
-  if (_token) {
-    headers['Authorization'] = `Bearer ${_token}`
+  if (options.method && !['GET', 'HEAD', 'OPTIONS'].includes(options.method.toUpperCase())) {
+    const csrf = csrfToken()
+    if (csrf) headers['X-CSRF-Token'] = csrf
   }
 
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers,
+    credentials: 'same-origin',
   })
 
   if (res.status === 401) {
-    clearToken()
-    throw new Error('Unauthorized')
+    throw new ApiError('Unauthorized', 401)
   }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Request failed' }))
-    throw new Error(err.detail || 'Request failed')
-  }
-
-  return res.json()
-}
-
-export async function uploadFile(path: string, file: File): Promise<any> {
-  const formData = new FormData()
-  formData.append('file', file)
-
-  const headers: Record<string, string> = {}
-  if (_token) {
-    headers['Authorization'] = `Bearer ${_token}`
-  }
-
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: 'POST',
-    headers,
-    body: formData,
-  })
-
-  if (res.status === 401) {
-    clearToken()
-    throw new Error('Unauthorized')
-  }
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: 'Upload failed' }))
-    throw new Error(err.detail || 'Upload failed')
+    const delay = Number(res.headers.get('Retry-After'))
+    throw new ApiError(err.detail || 'Request failed', res.status,
+      res.status === 429 && Number.isFinite(delay) && delay > 0 ? delay : null)
   }
 
   return res.json()

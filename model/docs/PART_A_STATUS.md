@@ -9,8 +9,9 @@ exact/true-positive match for state targets, at 70% or higher.
 
 ## Current evidence
 
-The dated 20-signal news output has been restored under
-`existing_models/news_signal_model/data/derived/signals_monthly.csv`. It has
+The dated 20-signal news output is bundled under
+`website/catalog/news_only_catalog_features.csv.gz` and can be materialized
+under `model/artifacts/news/news_only_catalog_features.csv.gz`. It has
 97 monthly rows from 2018-01 through 2026-01 and no missing values. Only the
 derived table and historical completion metadata were available; the original
 FLAN-T5 inference code, weights, and validation artifacts are not in this
@@ -46,13 +47,15 @@ is evaluation-only transfer evidence, not human Arkansas pharmacy truth, and
 it does not pass the 70% exact-accuracy requirement.
 
 The first unified news-head experiment is reproducible with
-`model/scripts/evaluate_part_a_news.py`. It uses the previous month's 20 news
-signals and later HHS, FDA, and CDC observations. The news-only run produced
-96 joined months, 18 evaluable nonconstant targets, and 5 promotion candidates
-after majority-baseline comparison. It therefore does not independently meet
-the ten-head requirement.
+`model/scripts/evaluate_part_a_news.py --root . --news-only`. It uses the
+previous month's 20 news signals and later HHS, FDA, and CDC observations. A
+fresh run on 2026-10-05 produced 96 joined months, 18 evaluable nonconstant
+targets, and 5 promotion candidates after majority-baseline comparison. Only
+one of those five reached 70% exact accuracy. It therefore does not
+independently meet the ten-head requirement.
 
-An augmented run added each target's previous-month observed value as a
+An augmented run with `model/scripts/evaluate_part_a_news.py --root .` added
+each target's previous-month observed value as a
 structured input, while keeping news one month behind. After correcting the
 CDC period field to use `epiweek` rather than its release `issue` code, the
 run evaluated 18 heads and produced **11 promotion candidates**. Four were

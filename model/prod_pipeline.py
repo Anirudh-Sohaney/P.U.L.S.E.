@@ -1,21 +1,10 @@
-"""
-Production Pipeline for Unified Medical Demand Prediction
+"""Historical research fits for the legacy news/ATC/CMS signal bundle.
 
-This script trains and executes the final production models on all available 
-historical data (merging train + test periods) and generates predictions for:
-1. 20 News-based Systemic Signals
-2. 1,368 CMS Part D Annual Drug Signals
-3. 18 Arkansas ATC Monthly Therapeutic Signals
-
-REQUIRED APIs / DATA INPUTS for Real-time execution:
-- NEWS_API_KEY: A key for a news aggregation service (e.g. GDELT, NewsAPI).
-- CMS Open Data: https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers
-- HHS Open Data: https://opendata.hhs.gov/api/v1/datasets/medicaid-provider-spending-ndc/
-- NLM RxNav: https://rxnav.nlm.nih.gov/REST/
+This script has no current news-model runner or validated live ATC feature
+vector. It must not emit a production forecast or overwrite the checked-in
+legacy example at ``model/final_predictions.json``.
 """
 
-import os
-import json
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -35,11 +24,13 @@ ARKANSAS_QUALIFIED_ATC = [
     "A06", "V03", "C02", "M03", "D01", "L01", "C03", "N07", "D10", "V04"
 ]
 
-def fetch_live_news_signals(api_key: str):
-    if not api_key:
-        print("[WARNING] No NEWS_API_KEY provided. Using offline historical data.")
+def load_historical_news_signals():
+    """Load the external model's dated table when available locally."""
     root = Path(__file__).resolve().parent.parent
     path = root / "existing_models/news_signal_model/data/derived/signals_monthly.csv"
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Historical news-model table is absent: {path}. The upstream runner is not checked in.")
     news = pd.read_csv(path)
     news["month"] = pd.to_datetime(news["date"]).dt.to_period("M")
     return news
@@ -55,14 +46,14 @@ class ProductionModel:
         self.cms_models = {}
         
     def train(self):
-        print("--- Initiating Full Production Training on all historical data ---")
+        print("--- Fitting legacy historical models for research only ---")
         self._train_news_pipeline()
         self._train_arkansas_pipeline()
         self._train_cms_pipeline()
         print("--- Training Complete ---")
 
     def _train_news_pipeline(self):
-        self.news = fetch_live_news_signals(os.environ.get("NEWS_API_KEY"))
+        self.news = load_historical_news_signals()
         self.news_features = [c for c in self.news.columns if c not in ["date", "month"]]
         print(f"Loaded 20 base News Signals: {len(self.news)} historical months.")
 
@@ -160,62 +151,15 @@ class ProductionModel:
         print(f"Successfully trained CMS Part D 5-state predictive ensemble for {view['drug_key'].nunique()} drugs.")
 
     def predict(self) -> dict:
-        print("--- Generating Production Signals ---")
-        
-        # 1. 20 News Signals (Latest Month)
-        latest_news = self.news.iloc[-1]
-        news_payload = {f: float(latest_news[f]) for f in self.news_features}
-        
-        # 2. 18 Arkansas ATC Signals (Predicting Next Month)
-        arkansas_payload = {}
-        for atc, m in self.arkansas_models.items():
-            # In live PROD we feed live X here. For output bundle, simulate inference.
-            dummy_live_x = np.zeros((1, len(m["features"])))
-            live_scaled = (dummy_live_x - m["mean"]) / m["std"]
-            pred_state = int(m["model"].predict(live_scaled)[0])
-            arkansas_payload[atc] = {
-                "class_name": m["class_name"],
-                "predicted_demand_state": pred_state,
-                "state_definition": "0=Low, 1=Medium, 2=High"
-            }
-            
-        # 3. 1,368 CMS Part D Signals (Predicting Next Year)
-        cms_payload = {}
-        if hasattr(self, 'cms_latest') and not self.cms_latest.empty:
-            latest_year = int(self.cms_latest["year"].max())
-            latest_df = self.cms_latest[self.cms_latest["year"] == latest_year].copy()
-            
-            probabilities = []
-            for model in self.cms_models:
-                probabilities.append(model.predict_proba(latest_df[self.cms_columns].fillna(0).to_numpy(float)))
-            predictions = np.column_stack(probabilities).argmax(axis=1)
-            
-            for i, (_, row) in enumerate(latest_df.iterrows()):
-                cms_payload[str(row["drug_key"])] = {
-                    "predicted_demand_state": int(predictions[i]),
-                    "state_definition": "0=Lowest to 4=Highest"
-                }
-                
-        final_payload = {
-            "metadata": {
-                "pipeline_version": "1.0-PROD",
-                "total_signals": len(news_payload) + len(arkansas_payload) + len(cms_payload)
-            },
-            "news_signals_20": news_payload,
-            "arkansas_atc_signals_18": arkansas_payload,
-            "cms_part_d_signals_1300": cms_payload
-        }
-        
-        return final_payload
+        """Fail closed until current inputs and a validated runner exist."""
+        raise RuntimeError(
+            "Legacy production emission is disabled: news-model source and current "
+            "ATC feature vectors are unavailable, and the model is not publishable. "
+            "Use the evaluated Part D claims baseline in website/backend instead."
+        )
 
 if __name__ == "__main__":
-    root_dir = Path(__file__).resolve().parent.parent
-    prod_model = ProductionModel(root_dir)
-    prod_model.train()
-    predictions = prod_model.predict()
-    
-    out_file = root_dir / "model/final_predictions.json"
-    with open(out_file, "w") as f:
-        json.dump(predictions, f, indent=2)
-    
-    print(f"Final predictions cleanly serialized to {out_file}")
+    raise SystemExit(
+        "Legacy production emission is disabled. See model/README.md and "
+        "model/artifacts/evaluation/publishability_audit.json."
+    )
