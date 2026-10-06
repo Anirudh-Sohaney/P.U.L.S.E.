@@ -269,10 +269,21 @@ def train(payload_json):
         holdout = usable[usable.date >= cutoff]
         if len(train_rows) < 30 or holdout.empty:
             raise ValueError(f"{drug} needs more history for a purged validation split")
-        model = _new_model().fit(train_rows[columns], train_rows.target)
-        predicted = np.maximum(model.predict(holdout[columns]), 0)
         actual = holdout.target.to_numpy(float)
-        wape = float(np.abs(actual - predicted).sum() / max(np.abs(actual).sum(), 1e-9))
+        denominator = max(np.abs(actual).sum(), 1e-9)
+        private_model = _new_model().fit(train_rows[base_columns], train_rows.target)
+        private_predicted = np.maximum(private_model.predict(holdout[base_columns]), 0)
+        private_wape = float(np.abs(actual - private_predicted).sum() / denominator)
+        wape = private_wape
+        if selected:
+            signal_model = _new_model().fit(train_rows[columns], train_rows.target)
+            signal_predicted = np.maximum(signal_model.predict(holdout[columns]), 0)
+            signal_wape = float(np.abs(actual - signal_predicted).sum() / denominator)
+            if signal_wape + 1e-6 < private_wape:
+                wape = signal_wape
+            else:
+                columns = base_columns
+                selected = []
         final = _new_model().fit(usable[columns], usable.target)
         current = work.iloc[[-1]][columns]
         direct_14 = max(0.0, float(final.predict(current)[0]))
@@ -284,13 +295,14 @@ def train(payload_json):
         trailing = recent.tail(28).units_sold.astype(float)
         plans.append({"drug_name": drug, "as_of_date": latest.date.date().isoformat(),
                       **_plan_quantities(direct_14, weights, trailing, latest, dates)})
-        results.append({"drug_name": drug, "wape": wape, "signals_used": selected})
+        results.append({"drug_name": drug, "wape": wape,
+                        "private_only_wape": private_wape, "signals_used": selected})
     plans.sort(key=lambda row: (-row["recommended_order_units"], row["drug_name"]))
     return json.dumps({"items": plans, "per_drug": results,
                        "history_start": sales.date.min().date().isoformat(),
                        "history_end": sales.date.max().date().isoformat(),
-                       "signal_years": signal_years, "model": "browser_xgboost_direct_14d_v4",
-                       "note": "Private files stayed in this browser. Public signals with unknown or later retrieval timestamps were excluded. Incoming stock was credited only after its dated arrival."})
+                       "signal_years": signal_years, "model": "browser_xgboost_direct_14d_v5",
+                       "note": "Private files stayed in this browser. Public signals with unknown or later retrieval timestamps were excluded, and eligible signals were kept only when they improved purged holdout error. Incoming stock was credited only after its dated arrival."})
 
 
 if "payload" in globals():

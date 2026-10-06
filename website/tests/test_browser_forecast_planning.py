@@ -123,7 +123,7 @@ def test_browser_model_does_not_credit_undated_large_order():
         "signal_rows": [], "signal_years": 0,
     })))
     plan = result["items"][0]
-    assert result["model"] == "browser_xgboost_direct_14d_v4"
+    assert result["model"] == "browser_xgboost_direct_14d_v5"
     assert plan["on_order_units"] == 1000
     assert plan["incoming_counted_by_day_14"] is False
     assert plan["minimum_buy_1d_units"] > 0
@@ -170,3 +170,39 @@ def test_signal_history_uses_revision_known_at_each_feature_date():
     assert series[dates.get_loc("2026-03-05")] == 2
     assert series[dates.get_loc("2026-03-12")] == 2
     assert series[dates.get_loc("2026-03-20")] == 3
+
+
+@pytest.mark.parametrize("signal_is_worse", [True, False])
+def test_public_signal_is_kept_only_when_purged_holdout_improves(monkeypatch, signal_is_worse):
+    days = pd.date_range("2026-01-01", periods=180)
+    sales = pd.DataFrame({"date": days, "drug_name": "Drug A",
+                          "units_sold": [5 + index % 7 + index // 30 for index in range(180)]})
+    inventory = pd.DataFrame({"date": days, "drug_name": "Drug A",
+                              "on_hand_units": 20})
+    monkeypatch.setattr(forecast, "_signal_series", lambda rows, dates: {
+        "sig_public": np.arange(len(dates), dtype=float)})
+
+    class ControlledModel:
+        def fit(self, features, target):
+            self.mean = float(target.mean())
+            self.has_signal = any(column.startswith("signal_") for column in features)
+            return self
+
+        def predict(self, features):
+            penalized = self.has_signal if signal_is_worse else not self.has_signal
+            return np.full(len(features), self.mean + (1000 if penalized else 0))
+
+    monkeypatch.setattr(forecast, "_new_model", ControlledModel)
+    result = json.loads(forecast.train(json.dumps({
+        "sales_csv": sales.to_csv(index=False),
+        "inventory_csv": inventory.to_csv(index=False),
+        "signal_rows": [{"observation_date": "2026-01-01"}],
+        "signal_years": 1,
+        "local_today": "2026-10-05",
+    })))
+    chosen = result["per_drug"][0]
+    assert chosen["signals_used"] == ([] if signal_is_worse else ["sig_public"])
+    if signal_is_worse:
+        assert chosen["wape"] == chosen["private_only_wape"]
+    else:
+        assert chosen["wape"] < chosen["private_only_wape"]
