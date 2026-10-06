@@ -8,6 +8,7 @@ import ipaddress
 import os
 import secrets
 import socket
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -17,7 +18,8 @@ from argon2 import PasswordHasher, Type
 from argon2.exceptions import InvalidHashError, VerificationError
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError
 from pydantic import BaseModel, Field
 
 from ..config import settings
@@ -28,6 +30,7 @@ PASSWORD_HASHER = PasswordHasher(time_cost=2, memory_cost=19 * 1024,
                                  parallelism=1, hash_len=32, salt_len=16,
                                  type=Type.ID)
 DUMMY_PASSWORD_HASH = PASSWORD_HASHER.hash(secrets.token_urlsafe(32))
+_journal_mode_lock = threading.Lock()
 
 
 def _database() -> Path:
@@ -48,7 +51,11 @@ def _connect() -> sqlite3.Connection:
     connection = sqlite3.connect(_database(), timeout=30)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA busy_timeout=30000")
-    connection.execute("PRAGMA journal_mode=WAL")
+    # Switching journal modes on concurrent fresh connections can fail even
+    # with a busy timeout; the WAL setting persists after the first switch.
+    with _journal_mode_lock:
+        if connection.execute("PRAGMA journal_mode").fetchone()[0] != "wal":
+            connection.execute("PRAGMA journal_mode=WAL")
     connection.execute("PRAGMA foreign_keys=ON")
     connection.execute("CREATE TABLE IF NOT EXISTS accounts (username TEXT PRIMARY KEY, password_hash TEXT NOT NULL, created_at TEXT NOT NULL)")
     connection.execute("""CREATE TABLE IF NOT EXISTS login_attempts
@@ -223,7 +230,7 @@ def get_current_user(request: Request, token: Optional[str] = Depends(oauth2_sch
         jti = payload.get("jti")
         if not username or not jti:
             raise unauthorized
-    except JWTError:
+    except PyJWTError:
         raise unauthorized
     with _connect() as connection:
         session = connection.execute("""SELECT 1 FROM sessions
@@ -298,7 +305,7 @@ def logout(request: Request, response: Response,
     raw = bearer or request.cookies.get("pulse_session")
     try:
         jti = jwt.decode(raw, settings.SECRET_KEY, algorithms=["HS256"]).get("jti")
-    except JWTError:
+    except PyJWTError:
         jti = None
     if jti:
         with _connect() as connection:

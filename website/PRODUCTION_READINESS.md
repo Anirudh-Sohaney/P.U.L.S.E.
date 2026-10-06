@@ -192,13 +192,16 @@ lists no patched `braces` release. Node dependencies stay in the disposable
 build stage; the final Nginx image copies only static assets. Track this
 build-time finding and reassess the Tailwind upgrade when a compatible path is
 available rather than claiming the full audit is clean.
-The backend image uses the official Python 3.14 slim image and a 35-package
+The backend image uses the official Python 3.14 slim image and a 32-package
 exact-version runtime lock. Legacy server-side XGBoost and scikit-learn are
-absent. A clean Python 3.14 environment installed that lock with wheels only,
-loaded the API and fourteen worker tasks, registered and authenticated an
-Argon2id account. The previous lock also evaluated the four CMS baseline folds,
-served the 1,312-ID catalog, and passed a restored snapshot rehearsal; the
-new lock adds only Argon2id bindings. Docker is unavailable on this laptop, so the container
+absent. Wheel-only resolution of the current lock succeeded on Python 3.14;
+the local API and authentication tests pass with its PyJWT version. The lock
+uses PyJWT for HS256 session tokens; a legacy
+python-jose token fixture verifies existing sessions remain readable. A
+`pip-audit` check of the locked runtime packages reported no known findings on
+2026-10-05, and CI repeats that check. The previous lock also evaluated the
+four CMS baseline folds, served the 1,312-ID catalog, and passed a restored
+snapshot rehearsal. Docker is unavailable on this laptop, so the container
 image itself has not yet been built here.
 The Compose API, refresh worker, and backup worker run as the unprivileged
 `pulse` user (UID 10001).

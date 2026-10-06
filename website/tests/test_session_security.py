@@ -1,8 +1,21 @@
 import pytest
+import jwt
 from fastapi.testclient import TestClient
 
 from backend.app import create_app
 from backend.config import settings
+
+
+def test_existing_hs256_token_remains_compatible():
+    # Issued by python-jose before the PyJWT migration, using a test-only key.
+    token = ("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+             "eyJzdWIiOiJsZWdhY3lfdXNlciIsImp0aSI6ImxlZ2FjeV9zZXNzaW9uIiw"
+             "iZXhwIjoxODkzNDU2MDAwLCJjc3JmX2hhc2giOiJsZWdhY3lfaGFzaCJ9."
+             "FNUPus3rqtUTkCNOG5nZEbQFctr32nbhF4cppAit9BA")
+    payload = jwt.decode(token, "test-secret-for-legacy-compatibility-only",
+                         algorithms=["HS256"])
+    assert payload["sub"] == "legacy_user"
+    assert payload["jti"] == "legacy_session"
 
 
 def test_cookie_session_requires_csrf_for_writes_and_uses_argon2id(tmp_path, monkeypatch):
