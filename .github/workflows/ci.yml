@@ -52,6 +52,8 @@ jobs:
         run: npm ci
       - name: Audit runtime dependencies
         run: npm audit --omit=dev --audit-level=high
+      - name: Lint frontend source
+        run: npm run lint
       - name: Typecheck, verify browser-model wheels, and build
         run: npm run build
 

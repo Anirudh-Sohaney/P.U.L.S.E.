@@ -76,7 +76,7 @@ export default function Dashboard() {
         }
         setLocked(false)
         await load(user.username)
-      } catch (err) {
+      } catch {
         if (active && !unlockingRef.current) { lockBrowserPlan(); navigate('/') }
       }
     }

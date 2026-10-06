@@ -5,7 +5,7 @@ not a claim that every catalog value is current or that the platform is ready
 for a public launch.
 
 The root `.github/workflows/ci.yml` is configured to run the complete backend test suite,
-frontend typecheck/build and runtime dependency audit, and a Compose smoke
+frontend lint/typecheck/build and runtime dependency audit, and a Compose smoke
 test for the API, frontend proxy, built Chromium in-browser training,
 encrypted plan reload without private CSV uploads, evaluated CMS baseline,
 read-only signal date/provenance audit, verified backup and restore, worker
