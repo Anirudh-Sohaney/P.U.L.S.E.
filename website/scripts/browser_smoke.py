@@ -25,10 +25,13 @@ def fixture_files(directory: Path, marker: str) -> tuple[Path, Path]:
     inventory = directory / "inventory.csv"
     with sales.open("w", newline="", encoding="utf-8") as output:
         writer = csv.writer(output)
-        writer.writerow(("date", "drug_name", "units_sold"))
+        writer.writerow(("date", "drug_name", "units_sold", "stockout_flag"))
         for index in range(200):
             day = first_day + timedelta(days=index)
-            writer.writerow((day.isoformat(), marker, 4 + day.weekday() % 4))
+            stockout = index == 100
+            writer.writerow((day.isoformat(), marker,
+                             0 if stockout else 4 + day.weekday() % 4,
+                             int(stockout)))
     with inventory.open("w", newline="", encoding="utf-8") as output:
         writer = csv.writer(output)
         writer.writerow(("date", "drug_name", "on_hand_units", "on_order_units"))
@@ -205,7 +208,7 @@ def run(base_url: str, signal_years: int = 0,
             finally:
                 context.close()
                 browser.close()
-    print(f"Browser smoke passed ({signal_years} signal years): local training, "
+    print(f"Browser smoke passed ({signal_years} signal years): stockout-aware local training, "
           "encrypted reload, idle lock, all-session revocation, and no private CSV API upload")
 
 

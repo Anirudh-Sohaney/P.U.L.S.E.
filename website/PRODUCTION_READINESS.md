@@ -33,6 +33,17 @@ locking and all-session revocation, and sent no private CSV contents to the
 API. The temporary account and database were removed after the run. This
 checks the browser workflow against a development server; the Compose and
 cloud images remain untested locally.
+After `npm run build` in `website/frontend/`, repeat the built-browser check
+without creating an account in the live database:
+
+```bash
+cd website
+python -m scripts.browser_smoke_isolated --signal-years 3 --simulate-rate-limit
+```
+
+The helper imports the pinned catalog into a temporary database, starts API
+and frontend processes on temporary localhost ports, runs Chromium with a
+marked stockout in the private sales fixture, and stops both processes.
 
 ## Running locally
 
