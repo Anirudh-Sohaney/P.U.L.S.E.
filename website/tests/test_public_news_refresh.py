@@ -89,6 +89,49 @@ def test_fda_refresh_removes_stored_approval_index_pages(tmp_path, monkeypatch):
     assert signal_store.recent_news() == []
 
 
+def test_news_capture_preserves_first_seen_article_versions(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "DATA_PATH", str(tmp_path))
+    article = _article("FDA Drugs RSS", "https://www.fda.gov/drugs/shortage-update")
+    article["published_at"] = "2026-10-01T10:00:00+00:00"
+    article["summary_text"] = "Initial source summary"
+    monkeypatch.setattr(refresh_public, "fetch_fda_drug_updates", lambda: [article.copy()])
+    first = refresh_public.refresh_news(("fda_drugs_rss",))
+    assert first["sources"][0]["evidence_added"] == 1
+    with signal_store.connect() as db:
+        original = dict(db.execute("SELECT * FROM news_article_versions").fetchone())
+    assert original["source_timestamp"] == article["published_at"]
+    assert original["timestamp_kind"] == "rss_pub_date"
+    assert original["summary_text"] == "Initial source summary"
+
+    article["title"] = "Drug shortage revised update"
+    article["summary_text"] = "Revised source summary"
+    second = refresh_public.refresh_news(("fda_drugs_rss",))
+    third = refresh_public.refresh_news(("fda_drugs_rss",))
+    assert second["sources"][0]["evidence_added"] == 1
+    assert third["sources"][0]["evidence_added"] == 0
+    with signal_store.connect() as db:
+        versions = [dict(row) for row in db.execute(
+            "SELECT * FROM news_article_versions ORDER BY first_observed_at")]
+        current_title = db.execute("SELECT title FROM news_articles").fetchone()[0]
+    assert len(versions) == 2
+    assert next(row for row in versions if row["version_hash"] == original["version_hash"]) == original
+    assert {row["summary_text"] for row in versions} == {
+        "Initial source summary", "Revised source summary"}
+    assert current_title == "Drug shortage revised update"
+
+    with signal_store.connect() as db:
+        db.execute("""UPDATE news_article_versions SET first_observed_at=?
+            WHERE summary_text='Initial source summary'""", ("2026-10-01T12:00:00+00:00",))
+        db.execute("""UPDATE news_article_versions SET first_observed_at=?
+            WHERE summary_text='Revised source summary'""", ("2026-10-02T12:00:00+00:00",))
+    early = signal_store.news_article_versions_as_of(
+        datetime(2026, 10, 2, 10, tzinfo=timezone.utc))
+    later = signal_store.news_article_versions_as_of(
+        datetime(2026, 10, 3, 10, tzinfo=timezone.utc))
+    assert [row["summary_text"] for row in early] == ["Initial source summary"]
+    assert [row["summary_text"] for row in later] == ["Revised source summary"]
+
+
 def test_fda_recalls_feed_keeps_drug_recall_and_excludes_food(monkeypatch):
     published = format_datetime(datetime.now(timezone.utc))
     feed = f"""<rss><channel>

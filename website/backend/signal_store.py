@@ -114,6 +114,24 @@ def initialize() -> None:
             matched_terms TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_news_published_at ON news_articles(published_at DESC);
+        CREATE TABLE IF NOT EXISTS news_article_versions (
+            version_hash TEXT PRIMARY KEY,
+            url_hash TEXT NOT NULL,
+            source_name TEXT NOT NULL,
+            title TEXT NOT NULL,
+            url TEXT NOT NULL,
+            source TEXT NOT NULL,
+            source_timestamp TEXT NOT NULL,
+            timestamp_kind TEXT NOT NULL,
+            first_observed_at TEXT NOT NULL,
+            relevance_score INTEGER NOT NULL,
+            matched_terms TEXT NOT NULL,
+            summary_text TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_news_versions_seen
+          ON news_article_versions(first_observed_at, source_name);
+        CREATE INDEX IF NOT EXISTS idx_news_versions_url
+          ON news_article_versions(url_hash, first_observed_at);
         CREATE TABLE IF NOT EXISTS shortage_snapshots (
             snapshot_date TEXT NOT NULL,
             row_hash TEXT NOT NULL,
@@ -673,6 +691,30 @@ def recent_news(*, days: int = 3, limit: int = 20) -> list[dict]:
             relevance_score, matched_terms FROM news_articles
             WHERE published_at >= ? ORDER BY relevance_score DESC, published_at DESC
             LIMIT ?""", (cutoff, limit)).fetchall()
+    return [dict(row) for row in rows]
+
+
+def news_article_versions_as_of(as_of: datetime, *, since: datetime | None = None) -> list[dict]:
+    """Return each article version known by a UTC replay time, without later edits."""
+    if as_of.tzinfo is None or (since is not None and since.tzinfo is None):
+        raise ValueError("News replay times must be timezone-aware")
+    cutoff = as_of.astimezone(timezone.utc).isoformat()
+    start = since.astimezone(timezone.utc).isoformat() if since else None
+    initialize()
+    with connect() as db:
+        rows = db.execute("""WITH known AS (
+            SELECT *, ROW_NUMBER() OVER (
+                PARTITION BY source_name, url_hash
+                ORDER BY first_observed_at DESC, version_hash DESC) AS position
+            FROM news_article_versions
+            WHERE first_observed_at <= ? AND source_timestamp <= ?
+              AND (? IS NULL OR source_timestamp >= ?)
+        ) SELECT version_hash, url_hash, source_name, title, url, source,
+            source_timestamp, timestamp_kind, first_observed_at,
+            relevance_score, matched_terms, summary_text
+          FROM known WHERE position=1
+          ORDER BY source_timestamp, source_name, url_hash""",
+          (cutoff, cutoff, start, start)).fetchall()
     return [dict(row) for row in rows]
 
 

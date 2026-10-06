@@ -395,6 +395,16 @@ source timestamp, are marked unusable in `/history`, cannot be selected for
 point-in-time browser training, and remain excluded from `/latest`. The January
 2026 period is a historical artifact value, not a current news-model refresh.
 
+Future daily FDA and GDELT captures retain each distinct source-visible
+article version in `news_article_versions`, including the feed name, timestamp
+kind, source timestamp, first capture time, title, and available summary text.
+Repeated captures of the same version do not change its first capture time;
+source revisions remain separate. Older `news_articles` rows are not
+retroactively assigned a first capture time, because their `fetched_at` field
+was previously overwritten on repeat refresh. This evidence supports a future
+chronological news pipeline but does not validate or publish the 20 legacy
+news-model output IDs.
+
 The gap report now marks 1,212 legacy drug IDs with a separate evaluated
 two-year baseline projection for 2026 and 18 ATC demand outputs that still
 require current source data and a validated model rerun. The 20 news-model

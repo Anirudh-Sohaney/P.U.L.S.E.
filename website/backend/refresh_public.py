@@ -36,6 +36,23 @@ FDA_PRESS_EVENT_TERMS = ("approv", "recall", "shortage", "safety", "warning",
                          "treatment", "research", "drug", "medicine", "medication")
 
 
+def _evidence_row(row: dict, source_name: str, fetched_at: str) -> tuple:
+    """Retain each distinct source-visible article version and first capture time."""
+    timestamp_kind = "gdelt_first_seen" if source_name == "gdelt_recent_news" else "rss_pub_date"
+    fields = {"url_hash": row["url_hash"], "source_name": source_name,
+              "title": row["title"], "url": row["url"], "source": row["source"],
+              "source_timestamp": row["published_at"], "timestamp_kind": timestamp_kind,
+              "relevance_score": row["relevance_score"],
+              "matched_terms": row["matched_terms"],
+              "summary_text": str(row.get("summary_text") or "")[:4000]}
+    version_hash = hashlib.sha256(json.dumps(fields, sort_keys=True,
+        ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+    return (version_hash, fields["url_hash"], source_name, fields["title"],
+            fields["url"], fields["source"], fields["source_timestamp"],
+            timestamp_kind, fetched_at, fields["relevance_score"],
+            fields["matched_terms"], fields["summary_text"])
+
+
 def fetch_recent_news(*, timeout: int = 25) -> list[dict]:
     params = urlencode({"query": NEWS_QUERY, "mode": "artlist", "format": "json",
                         "timespan": "3d", "maxrecords": 100, "sort": "datedesc"})
@@ -81,7 +98,8 @@ def fetch_recent_news(*, timeout: int = 25) -> list[dict]:
                        "title": title[:500], "url": url,
                        "source": str(item.get("domain") or parsed_url.netloc)[:160],
                        "published_at": seen.isoformat(), "relevance_score": len(matches),
-                       "matched_terms": ",".join(matches)})
+                       "matched_terms": ",".join(matches),
+                       "summary_text": str(item.get("snippet") or "")[:4000]})
     return output
 
 
@@ -114,7 +132,8 @@ def fetch_fda_drug_updates(*, timeout: int = 25) -> list[dict]:
                        "title": title[:500], "url": url, "source": "FDA Drugs RSS",
                        "published_at": published.isoformat(),
                        "relevance_score": max(1, len(terms)),
-                       "matched_terms": ",".join(terms or events[:1])})
+                       "matched_terms": ",".join(terms or events[:1]),
+                       "summary_text": (item.findtext("description") or "").strip()[:4000]})
     return output
 
 
@@ -150,7 +169,8 @@ def fetch_fda_medwatch_updates(*, timeout: int = 25) -> list[dict]:
                        "title": title[:500], "url": url, "source": "FDA MedWatch RSS",
                        "published_at": published.isoformat(),
                        "relevance_score": len(matches),
-                       "matched_terms": ",".join(matches)})
+                       "matched_terms": ",".join(matches),
+                       "summary_text": (item.findtext("description") or "").strip()[:4000]})
     return output
 
 
@@ -187,7 +207,8 @@ def fetch_fda_drug_recalls(*, timeout: int = 25) -> list[dict]:
                        "title": title[:500], "url": url, "source": "FDA Recalls RSS",
                        "published_at": published.isoformat(),
                        "relevance_score": len(matches),
-                       "matched_terms": ",".join(matches)})
+                       "matched_terms": ",".join(matches),
+                       "summary_text": description[:4000]})
     return output
 
 
@@ -223,7 +244,8 @@ def fetch_fda_drug_press(*, timeout: int = 25) -> list[dict]:
                        "title": title[:500], "url": url, "source": "FDA Press RSS",
                        "published_at": published.isoformat(),
                        "relevance_score": len(matches),
-                       "matched_terms": ",".join(matches)})
+                       "matched_terms": ",".join(matches),
+                       "summary_text": description[:4000]})
     return output
 
 
@@ -256,6 +278,14 @@ def refresh_news(sources: tuple[str, ...] | None = None) -> dict:
                           OR lower(title) LIKE '%warning%' OR lower(title) LIKE '%safety alert%'
                           OR lower(title) LIKE '%concerns%' OR lower(title) LIKE '%discontinuation%'
                           OR lower(title) LIKE '%supply%' OR lower(title) LIKE '%manufacturing%'))""")
+                before_evidence = db.total_changes
+                db.executemany("""INSERT OR IGNORE INTO news_article_versions
+                    (version_hash, url_hash, source_name, title, url, source,
+                     source_timestamp, timestamp_kind, first_observed_at,
+                     relevance_score, matched_terms, summary_text)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    [_evidence_row(row, source_name, fetched) for row in articles])
+                evidence_added = db.total_changes - before_evidence
                 before = db.total_changes
                 db.executemany("""INSERT INTO news_articles
                     (url_hash, title, url, source, published_at, timestamp_kind,
@@ -276,7 +306,8 @@ def refresh_news(sources: tuple[str, ...] | None = None) -> dict:
                 db.execute("""UPDATE refresh_runs SET finished_at=?, status='success',
                     rows_written=? WHERE id=?""", (fetched, written, run_id))
             results.append({"source": source_name, "status": "success",
-                            "fetched": len(articles), "rows_written": written})
+                            "fetched": len(articles), "rows_written": written,
+                            "evidence_added": evidence_added})
         except Exception as exc:
             with connect() as db:
                 db.execute("""UPDATE refresh_runs SET finished_at=?, status='failed', error=?
