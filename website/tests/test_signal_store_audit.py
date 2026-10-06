@@ -1,8 +1,10 @@
 """Release audit rejects malformed source timing before it reaches the API."""
 
+import hashlib
 import pytest
 
 from backend import signal_store
+from backend.refresh_public import _evidence_row
 from backend.config import settings
 from scripts.audit_signal_store import audit
 
@@ -41,3 +43,27 @@ def test_signal_store_audit_accepts_known_historical_gap_and_rejects_bad_live_da
             observation_date='2026-99-99' WHERE row_hash='live'""")
     with pytest.raises(ValueError, match="invalid observation_date"):
         audit(path, expected_definitions=1, check_bundled_history=False)
+
+
+def test_signal_store_audit_rejects_changed_news_evidence(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "DATA_PATH", str(tmp_path))
+    signal_store.initialize()
+    url = "https://www.fda.gov/drugs/shortage-update"
+    article = {"url_hash": hashlib.sha256(url.encode()).hexdigest(),
+               "title": "Drug shortage update", "url": url, "source": "FDA Drugs RSS",
+               "published_at": "2026-10-01T10:00:00+00:00", "relevance_score": 2,
+               "matched_terms": "drug,shortage", "summary_text": "Source summary"}
+    evidence = _evidence_row(article, "fda_drugs_rss", "2026-10-02T12:00:00+00:00")
+    with signal_store.connect() as db:
+        db.execute("""INSERT INTO news_article_versions
+            (version_hash, url_hash, source_name, title, url, source,
+             source_timestamp, timestamp_kind, first_observed_at,
+             relevance_score, matched_terms, summary_text)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", evidence)
+    path = tmp_path / "signals.sqlite3"
+    assert audit(path, expected_definitions=0,
+                 check_bundled_history=False)["news_article_versions"] == 1
+    with signal_store.connect() as db:
+        db.execute("UPDATE news_article_versions SET summary_text='Changed text'")
+    with pytest.raises(ValueError, match="news evidence content changed"):
+        audit(path, expected_definitions=0, check_bundled_history=False)

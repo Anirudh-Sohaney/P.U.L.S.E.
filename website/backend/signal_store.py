@@ -30,6 +30,17 @@ COLLAPSED_DIMENSION_SIGNALS = {
     "shortage_active", "recall_active",
 }
 MAX_HISTORY_SOURCE_ROWS = 10_000
+NEWS_VERSION_FIELDS = ("url_hash", "source_name", "title", "url", "source",
+                       "source_timestamp", "timestamp_kind", "relevance_score",
+                       "matched_terms", "summary_text")
+
+
+def news_version_hash(fields: dict) -> str:
+    """Content identity for a source-visible article version, excluding capture time."""
+    content = {name: fields[name] for name in NEWS_VERSION_FIELDS}
+    payload = json.dumps(content, sort_keys=True, ensure_ascii=False,
+                         separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 PUBLISHABLE_DRUG_SOURCE_KIND = "cms_partd_two_year_persistence_v2"
 NEWS_BRIDGE_SHA256 = "7981884ee0f45fc9f73dc777781e80b542d48716550cf1ac6a742c152ee648f6"
 

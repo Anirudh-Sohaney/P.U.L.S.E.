@@ -11,7 +11,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from backend.config import settings
-from backend.signal_store import catalog_rows
+from backend.signal_store import catalog_rows, news_version_hash
 from scripts.import_signal_catalog import DEFAULT_HISTORY, DEFAULT_HISTORY_SHA256
 
 
@@ -40,6 +40,7 @@ def audit(path: Path | None = None, *, expected_definitions: int = 1312,
     problems: list[str] = []
     source_counts: Counter[str] = Counter()
     unknown_source_times = 0
+    news_versions = 0
     expected_history = {}
     if check_bundled_history:
         if hashlib.sha256(DEFAULT_HISTORY.read_bytes()).hexdigest() != DEFAULT_HISTORY_SHA256:
@@ -99,11 +100,30 @@ def audit(path: Path | None = None, *, expected_definitions: int = 1312,
         missing_history = set(expected_history) - verified_history
         if missing_history and not truncated:
             problems.append(f"{len(missing_history)} bundled historical rows are missing")
+        if not truncated and db.execute("""SELECT 1 FROM sqlite_master
+                WHERE type='table' AND name='news_article_versions'""").fetchone():
+            for row in db.execute("""SELECT version_hash, url_hash, source_name,
+                    title, url, source, source_timestamp, timestamp_kind,
+                    first_observed_at, relevance_score, matched_terms, summary_text
+                    FROM news_article_versions"""):
+                news_versions += 1
+                if (not _aware_time(row["source_timestamp"])
+                        or not _aware_time(row["first_observed_at"])):
+                    problems.append(f"{row['version_hash']}: invalid news source or capture time")
+                if row["timestamp_kind"] not in {"gdelt_first_seen", "rss_pub_date"}:
+                    problems.append(f"{row['version_hash']}: invalid news timestamp kind")
+                if hashlib.sha256(row["url"].encode("utf-8")).hexdigest() != row["url_hash"]:
+                    problems.append(f"{row['version_hash']}: news URL hash changed")
+                if news_version_hash(row) != row["version_hash"]:
+                    problems.append(f"{row['version_hash']}: news evidence content changed")
+                if len(problems) >= 20:
+                    break
     if problems:
         raise ValueError("Signal store audit failed: " + "; ".join(problems))
     return {"status": "passed", "definitions": definitions, "records": records,
             "verified_bundled_historical_records": len(verified_history),
             "unknown_historical_source_timestamps": unknown_source_times,
+            "news_article_versions": news_versions,
             "records_by_source_kind": dict(sorted(source_counts.items()))}
 
 

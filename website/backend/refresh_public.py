@@ -14,7 +14,7 @@ from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 from zoneinfo import ZoneInfo
 
-from .signal_store import connect, initialize
+from .signal_store import connect, initialize, news_version_hash
 
 
 GDELT_DOC_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
@@ -45,8 +45,7 @@ def _evidence_row(row: dict, source_name: str, fetched_at: str) -> tuple:
               "relevance_score": row["relevance_score"],
               "matched_terms": row["matched_terms"],
               "summary_text": str(row.get("summary_text") or "")[:4000]}
-    version_hash = hashlib.sha256(json.dumps(fields, sort_keys=True,
-        ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+    version_hash = news_version_hash(fields)
     return (version_hash, fields["url_hash"], source_name, fields["title"],
             fields["url"], fields["source"], fields["source_timestamp"],
             timestamp_kind, fetched_at, fields["relevance_score"],

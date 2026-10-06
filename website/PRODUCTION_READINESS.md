@@ -403,7 +403,11 @@ source revisions remain separate. Older `news_articles` rows are not
 retroactively assigned a first capture time, because their `fetched_at` field
 was previously overwritten on repeat refresh. This evidence supports a future
 chronological news pipeline but does not validate or publish the 20 legacy
-news-model output IDs.
+news-model output IDs. The read-only signal-store audit verifies each archived
+version's content hash and aware source/capture times; backup restore rehearsal
+reports the audited version count. On 2026-10-06 UTC, a live FDA Press refresh
+captured its first version, and a new local snapshot restored with one audited
+news version, 1,312 catalog IDs, and 1,324 ranked drugs.
 
 The gap report now marks 1,212 legacy drug IDs with a separate evaluated
 two-year baseline projection for 2026 and 18 ATC demand outputs that still
