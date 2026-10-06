@@ -495,9 +495,11 @@ On 2026-10-05, rerunning `model/scripts/audit_project_status.py` against the
 current artifacts independently returned `proxy_library_ready: false`,
 `learned_architecture_ready: false`, and `project_complete: false`. Its
 blocking failures were proxy coverage, the learned end-to-end accuracy
-contract, and missing research-exhaustion evidence. The forecast surface has
-43,366 unique rows across 14 targets and passes its structural check, but
-only one candidate is qualified in the metric-library audit. These results
+contract, and missing research-exhaustion evidence. A stricter rerun now also
+rejects the operational forecast surface: it has 43,366 unique rows across 14
+targets, but only the annual Part D target is qualified in the metric-library
+audit. The other 13 targets retain stale qualified labels in that research
+artifact; they cannot pass the project status gate. These results
 do not prove that the forecast rows can be regenerated from today's inputs.
 The historical metric feature-store and NADAC panel builders were restored
 from repository history after model tests exposed their missing imports. The
