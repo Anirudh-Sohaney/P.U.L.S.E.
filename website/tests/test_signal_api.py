@@ -202,6 +202,32 @@ def test_conflicting_source_values_are_marked_ambiguous(tmp_path, monkeypatch):
     assert len(collisions) == 6
 
 
+def test_latest_with_conflicting_source_revision_is_not_usable(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "DATA_PATH", str(tmp_path))
+    import_catalog(HISTORY_FIXTURE)
+    client = TestClient(create_app())
+    uid = next(row["id"] for row in client.get("/api/v1/signals/catalog",
+               params={"search": "adult_medicaid_enrollment"}).json()["signals"]
+               if row["signal_id"] == "adult_medicaid_enrollment")
+    with signal_store.connect() as db:
+        for index, value in enumerate((12.0, 13.0)):
+            db.execute("""INSERT INTO signal_records
+                (row_hash, signal_uid, signal_date, observation_date, value,
+                 source_timestamp, ingested_at, source_kind)
+                VALUES (?, ?, '2026-09-30', '2026-09-30', ?,
+                        '2026-10-01T12:00:00+00:00',
+                        '2026-10-01T13:00:00+00:00', 'medicaid_state_performance_api')""",
+                (f"test-conflict-{index}", uid, value))
+    latest = client.post("/api/v1/signals/latest", json={"ids": [uid]}).json()
+    assert latest["values"] == []
+    assert latest["missing_ids"] == [uid]
+    assert latest["ambiguous_ids"] == [uid]
+    assert latest["missing_details"][0]["reason"] == "conflicting_latest_revision"
+    assert {row["value"] for row in latest["latest_recorded_values"]} == {12.0, 13.0}
+    assert all(not row["usable"] and row["ambiguous"] for row in
+               latest["latest_recorded_values"])
+
+
 def test_collapsed_dimension_ids_are_history_only(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "DATA_PATH", str(tmp_path))
     import_catalog(HISTORY_FIXTURE)

@@ -55,10 +55,13 @@ def latest(query: LatestQuery):
     found = {row["id"] for row in rows}
     missing_ids = [uid for uid in query.ids if uid not in found]
     archived = [row for row in recorded if row["id"] in missing_ids and not row["usable"]]
+    conflicting_ids = {row["id"] for row in recorded
+                       if row["unusable_reason"] == "conflicting_latest_revision"}
     coverage = ({row["id"]: row for row in signal_store.gap_report()["signals"]}
                 if missing_ids else {})
     missing_details = [{"id": uid,
-                        "reason": coverage[uid]["gap_status"] if uid in coverage else "unknown_id",
+                        "reason": ("conflicting_latest_revision" if uid in conflicting_ids else
+                                   coverage[uid]["gap_status"] if uid in coverage else "unknown_id"),
                         "last_recorded_period": (coverage[uid]["latest_observation_date"]
                                                  if uid in coverage else None)}
                        for uid in missing_ids]

@@ -505,6 +505,9 @@ def values(ids: Iterable[str], *, start: date | None = None, end: date | None = 
         ambiguous = len(by_value) > 1
         for item in by_value.values():
             item["ambiguous"] = ambiguous
+            if ambiguous and item["usable"]:
+                item["usable"] = False
+                item["unusable_reason"] = "conflicting_latest_revision"
             rows.append(item)
     if latest_only:
         latest: dict[str, list[dict]] = {}
