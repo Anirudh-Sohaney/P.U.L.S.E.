@@ -653,10 +653,14 @@ validation split, and public signals are eligible only when their recorded
 source timestamp is no later than the feature date. Older catalog rows with
 unknown or later retrieval times are excluded. Lagged dated inventory is a
 required model feature; the latest balance drives the replenishment calculation.
+When the sales CSV supplies `stockout_flag`, every 14-day training target
+containing a marked stockout is excluded because observed sales were censored
+by unavailable stock. If no uncensored target remains, training fails with an
+explicit input error. Unmarked stockouts cannot be inferred from zero sales.
 Selected public features are retained only when their model improves purged
 holdout weighted absolute percentage error over the private sales and
 inventory model; otherwise the plan uses private features alone. Saved plans
-from the earlier browser model version require retraining.
+from earlier browser model versions require retraining.
 The inventory CSV must cover at least 130 sales days per drug with a same-day
 or previous-day snapshot. A single latest snapshot is rejected. Each row needs
 a real date, and each drug's latest inventory date must equal its last sales date.

@@ -133,6 +133,9 @@ def _features(part):
     work["stockout_lag1"] = stockout.shift(1)
     work["inventory_lag1"] = work.on_hand_units.shift(1)
     work["target"] = sales.shift(-1).rolling(14, min_periods=14).sum().shift(-13)
+    # Sales during a stockout are censored observations of demand. Exclude
+    # every training target whose following 14 days include a marked stockout.
+    work["target_stockout_days"] = stockout.shift(-1).rolling(14, min_periods=14).sum().shift(-13)
     columns = [name for name in work if name.startswith(("lag_", "mean_", "std_"))]
     columns += ["dow", "month", "weekofyear", "sin_year", "cos_year", "price_lag1", "stockout_lag1"]
     columns.append("inventory_lag1")
@@ -241,6 +244,9 @@ def train(payload_json):
                              on="date", direction="backward", tolerance=pd.Timedelta(days=1))
         work, columns = _features(part)
         usable = work.dropna(subset=columns + ["target"]).copy()
+        usable = usable[usable.target_stockout_days.eq(0)].copy()
+        if usable.empty:
+            raise ValueError(f"{drug} has no uncensored 14-day training targets; add more non-stockout history")
         base_columns = columns.copy()
         cutoff = usable.date.iloc[int(len(usable) * .8)]
         selected = []
@@ -265,6 +271,7 @@ def train(payload_json):
                     columns.append(column)
                 selected.append(uid)
             usable = work.dropna(subset=base_columns + ["target"]).copy()
+            usable = usable[usable.target_stockout_days.eq(0)].copy()
         train_rows = usable[usable.date <= cutoff - timedelta(days=14)]
         holdout = usable[usable.date >= cutoff]
         if len(train_rows) < 30 or holdout.empty:
@@ -301,8 +308,8 @@ def train(payload_json):
     return json.dumps({"items": plans, "per_drug": results,
                        "history_start": sales.date.min().date().isoformat(),
                        "history_end": sales.date.max().date().isoformat(),
-                       "signal_years": signal_years, "model": "browser_xgboost_direct_14d_v5",
-                       "note": "Private files stayed in this browser. Public signals with unknown or later retrieval timestamps were excluded, and eligible signals were kept only when they improved purged holdout error. Incoming stock was credited only after its dated arrival."})
+                       "signal_years": signal_years, "model": "browser_xgboost_direct_14d_v6",
+                       "note": "Private files stayed in this browser. Fourteen-day training targets that included a marked stockout were excluded. Public signals with unknown or later retrieval timestamps were excluded, and eligible signals were kept only when they improved purged holdout error. Incoming stock was credited only after its dated arrival."})
 
 
 if "payload" in globals():

@@ -123,7 +123,7 @@ def test_browser_model_does_not_credit_undated_large_order():
         "signal_rows": [], "signal_years": 0,
     })))
     plan = result["items"][0]
-    assert result["model"] == "browser_xgboost_direct_14d_v5"
+    assert result["model"] == "browser_xgboost_direct_14d_v6"
     assert plan["on_order_units"] == 1000
     assert plan["incoming_counted_by_day_14"] is False
     assert plan["minimum_buy_1d_units"] > 0
@@ -136,6 +136,36 @@ def test_browser_training_requires_dated_inventory_history():
     inventory = pd.DataFrame({"date": [days[-1]], "drug_name": ["Drug A"],
                               "on_hand_units": [10]})
     with pytest.raises(ValueError, match="at least 130 sales days"):
+        forecast.train(json.dumps({"sales_csv": sales.to_csv(index=False),
+                                   "inventory_csv": inventory.to_csv(index=False),
+                                   "signal_years": 0}))
+
+
+def test_browser_training_excludes_targets_with_marked_stockout(monkeypatch):
+    days = pd.date_range("2026-01-01", periods=180)
+    sales = pd.DataFrame({"date": days, "drug_name": "Drug A",
+                          "units_sold": [5] * 180, "stockout_flag": [0] * 180})
+    sales.loc[80, ["units_sold", "stockout_flag"]] = [0, 1]
+    inventory = pd.DataFrame({"date": days, "drug_name": "Drug A",
+                              "on_hand_units": [20] * 180})
+
+    class CheckedModel:
+        def fit(self, features, target):
+            assert set(target) == {70.0}
+            return self
+
+        def predict(self, features):
+            return np.full(len(features), 70.0)
+
+    monkeypatch.setattr(forecast, "_new_model", CheckedModel)
+    result = json.loads(forecast.train(json.dumps({
+        "sales_csv": sales.to_csv(index=False),
+        "inventory_csv": inventory.to_csv(index=False), "signal_years": 0,
+    })))
+    assert result["items"][0]["forecast_14d_units"] == 70.0
+
+    sales["stockout_flag"] = 1
+    with pytest.raises(ValueError, match="no uncensored 14-day training targets"):
         forecast.train(json.dumps({"sales_csv": sales.to_csv(index=False),
                                    "inventory_csv": inventory.to_csv(index=False),
                                    "signal_years": 0}))
