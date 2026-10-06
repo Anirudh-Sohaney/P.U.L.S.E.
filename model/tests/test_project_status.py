@@ -37,6 +37,17 @@ def test_missing_research_exhaustion_evidence_keeps_project_incomplete():
     assert result["project_complete"] is False
 
 
+def test_audited_partd_slice_passes_target_set_check_without_claiming_completion():
+    fixture = Path("model/tests/fixtures/metric_audit")
+    result = audit_project_status(
+        fixture, fixture / "qualified_partd_forecasts.csv.gz")
+    surface = next(item for item in result["checks"]
+                   if item["name"] == "operational_metric_surface")
+    assert surface["passed"] is True
+    assert "targets=1; qualified_targets=1" in surface["detail"]
+    assert result["project_complete"] is False
+
+
 def test_serialized_project_status_matches_current_metric_audit():
     status = json.loads(Path(
         "model/artifacts/evaluation/project_status.json").read_text())
