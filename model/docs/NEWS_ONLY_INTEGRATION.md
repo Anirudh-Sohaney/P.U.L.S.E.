@@ -7,13 +7,49 @@ materialize it under `model/artifacts/news/`. It has 97 monthly rows from
 2018-01 through 2026-01. The adapter validates its exact schema, dates, and
 numeric values before loading it.
 
-The original `existing_models/news_signal_model` directory, inference code,
-weights, article acquisition manifests, and validation artifacts are absent
-from this checkout and its inspected Git history. Historical values can be
-queried with their recorded dates, but the current daily worker cannot
-regenerate them. They must not be published as current news-model signals.
-The `news_signals.py` event feature layer is a different transformation and
-does not reproduce these 20 columns.
+The current `model/arkansas_pharma_signal/` package contains substantial
+working model code: source adapters, learned text-relevance and event-state
+components, demand and shortage models, chronological evaluators, and forecast
+contracts. The exact earlier FLAN-T5 20-column generator is a separate model
+path. In the inspected history, `existing_models/news_signal_model/` contains
+only its README, a completion-gate report, and the dated CSV output; its
+inference runner, model-specific acquisition manifest, and row-level
+validation artifacts are not present. Historical values can be queried with
+their recorded dates, but the current daily worker cannot regenerate those
+20 columns. They must not be published as current news-model signals.
+
+The older `existing_models/pharmacy_architecture/` variant is also real model
+code, but it is not that generator: its `UnifiedPharmacyArchitecture` combines
+numeric features with four summarized SLM labels, and its command-line entry
+point only prints the accepted-metric inventory. The historic
+`model/prod_pipeline.py` is not a safe substitute. Its news loader reads the
+dated CSV regardless of the `NEWS_API_KEY`, and its removed ATC inference path
+used an all-zero feature vector. The current script fails closed for those
+reasons. The separate `news_signals.py` event-state layer is another valid
+transformation, but it does not reproduce the legacy 20 columns.
+
+The integrated runner itself is present in the historical Git commit
+`d5e11df` (`feat: Add unified prod pipeline...`). It trained downstream heads
+from the 20-column dated news table, plus Arkansas ATC and CMS Part D inputs.
+That proves the combined pipeline existed; it does not recover the upstream
+FLAN-T5 signal-generation model or a serialized checkpoint. Its checked-in
+`final_predictions.json` reports 1,250 outputs (20 news, 18 ATC, and 1,212 CMS
+drug rows), despite the commit title's claim of 1,406. The historical code
+also trains on all available rows and predicts ATC output from a zero vector,
+so neither the runner nor its bundled predictions are valid live model output.
+An additional `model_report.md` survives only in an unreachable Git tree
+(`9bf3831da6654d3632dbb1287df2066c97cfb381`); it repeats the 1,406-output claim
+and reports 80.64% exact / 80.96% balanced CMS accuracy. The report's referenced
+validation files are absent, and its count conflicts with the 1,250 rows in the
+archived JSON. Treat those metrics as unverified historical claims, not a
+production evaluation.
+The current `model/prod_pipeline.py` therefore remains fail-closed while the
+live-input and point-in-time path is rebuilt around the available model code.
+
+This distinction is important for deployment: model code in `model/` is
+present and should be reused for its declared targets; only the exact historical
+20-column FLAN-T5 inference path is unavailable. Do not relabel outputs from a
+different model path as those legacy signal IDs.
 
 ## Reproducible historical checks
 

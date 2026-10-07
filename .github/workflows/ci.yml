@@ -99,7 +99,7 @@ jobs:
           docker compose -f website/docker-compose.yml build backup
           docker compose -f website/docker-compose.yml run --rm --no-deps backup python -m scripts.backup_databases
           docker compose -f website/docker-compose.yml run --rm --no-deps backup python -m scripts.operational_status backup
-          docker compose -f website/docker-compose.yml run --rm --no-deps backup python -c "from pathlib import Path; from scripts.rehearse_restore import rehearse; snapshot=max(Path('/app/data/backups').iterdir()); result=rehearse(snapshot); assert result['catalog_signals'] == 1312 and result['ranked_drugs'] > 0"
+          docker compose -f website/docker-compose.yml run --rm --no-deps backup python -c "from pathlib import Path; from scripts.rehearse_restore import rehearse; snapshot=max(Path('/app/data/backups').iterdir()); result=rehearse(snapshot); assert result['catalog_signals'] >= 1312 and result['ranked_drugs'] > 0"
       - name: Validate cloud overlay and production secret startup
         run: |
           umask 077
@@ -118,7 +118,7 @@ jobs:
           curl --fail --retry 30 --retry-delay 2 --retry-connrefused http://127.0.0.1:8000/ready
           docker compose -f website/docker-compose.yml -f website/docker-compose.cloud.yml run --rm --no-deps worker python -c "from backend.config import settings; assert settings.ENVIRONMENT == 'production' and len(settings.SECRET_KEY) >= 32"
           docker compose -f website/docker-compose.yml -f website/docker-compose.cloud.yml run --rm --no-deps backup python -c "from backend.config import settings; from backend.backup_worker import backup_due; assert settings.ENVIRONMENT == 'production' and len(settings.SECRET_KEY) >= 32 and callable(backup_due)"
-          docker compose -f website/docker-compose.yml -f website/docker-compose.cloud.yml run --rm --no-deps backup python -c "from pathlib import Path; from backend.backup_worker import ensure_encrypted_export; from scripts.encrypted_backup import load_key, restore_encrypted; from scripts.rehearse_restore import rehearse; source=Path('/app/data'); snapshot=max((source/'backups').iterdir()); key=Path('/run/secrets/pulse_backup_key'); bundle=ensure_encrypted_export(snapshot, source, Path('/offsite'), key); restored=Path('/tmp/pulse-offsite-restored'); restore_encrypted(bundle, restored, load_key(key)); assert rehearse(restored)['catalog_signals']==1312"
+          docker compose -f website/docker-compose.yml -f website/docker-compose.cloud.yml run --rm --no-deps backup python -c "from pathlib import Path; from backend.backup_worker import ensure_encrypted_export; from scripts.encrypted_backup import load_key, restore_encrypted; from scripts.rehearse_restore import rehearse; source=Path('/app/data'); snapshot=max((source/'backups').iterdir()); key=Path('/run/secrets/pulse_backup_key'); bundle=ensure_encrypted_export(snapshot, source, Path('/offsite'), key); restored=Path('/tmp/pulse-offsite-restored'); restore_encrypted(bundle, restored, load_key(key)); assert rehearse(restored)['catalog_signals'] >= 1312"
           docker compose -f website/docker-compose.yml -f website/docker-compose.cloud.yml run --rm --no-deps backup python -m scripts.operational_status backup
       - name: Exercise the production Caddy routing
         run: |

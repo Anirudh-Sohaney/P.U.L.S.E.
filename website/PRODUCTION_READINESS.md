@@ -84,7 +84,7 @@ so the ranking uses the newly committed source generation.
 Run the frontend from `website/frontend/` with
 `npm install` and `npm run dev`. The API is at `http://localhost:8000`; the
 frontend is normally at `http://localhost:5173`. After importing or refreshing, run `python -m scripts.audit_signal_store` to
-check all 1,312 identities, SQLite integrity and foreign keys, canonical signal
+check all 1,312 seed IDs and runtime-generated IDs, SQLite integrity and foreign keys, canonical signal
 period dates, finite values, timezone-aware ingestion/source timestamps, and
 the exact stored fields of all 4,097 rows from the SHA-256-pinned historical
 catalog. Existing blank historical source URLs are filled from that source
@@ -338,20 +338,46 @@ The worker records a heartbeat before and after each hourly source check.
 two hours and shows each source's last attempt, last success, and latest
 status. It also returns `failed_sources` so a fallback source failure is
 visible even while the worker is healthy; the signals page displays that
-partial-failure warning. The signals page warns when the worker is stale. `/health` checks API
-process liveness; `/ready` requires the 1,312-ID catalog and all 4,097 bundled
-historical catalog records. Both local systemd and Compose run the read-only
+partial-failure warning. Its `news_model` object separately reports whether
+the legacy 20-signal inference stage is `not_configured`, `running`, `failed`,
+or awaiting validation, along with its signal count, latest recorded period, and latest
+run. Those states never imply publishability. The signals page warns when the
+worker is stale and when the news-model stage cannot publish. `/health` checks API
+process liveness; `/ready` requires every ID in the checked-in 1,312-ID seed
+manifest and all 4,097 bundled historical catalog records. Evaluated CMS
+outputs may add stable definitions for newer drugs. Both local systemd and Compose run the read-only
 signal-store audit after import and before starting the API. Neither
 claims that every upstream source has published a current observation.
 
 ## Public signal API
 
+### Upstream data services and credentials
+
+The current `pulse-worker` schedule is configured for **16:00 UTC**. Its
+existing source adapters use public endpoints and do not require per-source API
+keys:
+
+| Input | Current adapter | Credential status |
+| --- | --- | --- |
+| General recent news | GDELT DOC API | Public; no key configured. It can return HTTP 429, which is recorded as a source failure and retried after the worker cooldown. |
+| Drug safety and pharmacy context | FDA Drugs, MedWatch, Recalls, and Press RSS feeds; openFDA shortage API | Public; no key configured. |
+| Labor and price context | BLS Public Data API v1; CMS NADAC download | Public; no key configured. The worker currently makes fewer than the documented unregistered BLS daily request budget. |
+| Arkansas public demand and context | CMS Part D catalog/source, CMS Geographic Variation API, Medicaid State Performance API, Arkansas SDUD downloads, and HHS NDC release catalog | Public; no key configured. The Part D source is checksum- and manifest-validated before the daily projection is published. |
+
+The production deployment still needs operator-managed secrets for session
+signing and encrypted backups; those are not upstream API keys. The historic
+`NEWS_API_KEY` in an old `model/prod_pipeline.py` revision was never used by its
+news loader. No NewsAPI integration is configured. The historical
+FLAN-T5-small bridge is data only; its original inference pipeline is not part
+of the worker schedule. Do not add credentials or promote another feed as an
+equivalent model input without versioning and validating that input path.
+
 All routes are also described at `/docs` and in the frontend API guide.
 
 | Route | Meaning |
 | --- | --- |
-| `GET /api/v1/signals/catalog` | All 1,312 stable IDs, identity fields, units, source, and last period. Search and pagination are supported. |
-| `POST /api/v1/signals/latest` | Latest usable recorded observations in `values` for up to 1,500 IDs, including the full 1,312-ID catalog in one call. `latest_recorded_values` contains the absolute latest stored row for every requested ID with a record, including unvalidated rows flagged `usable: false`. For IDs without a usable value, `unusable_recorded_values` highlights that archived row; `missing_ids` and `missing_details` report the usable-value gap. Unknown IDs have no recorded row. Date filters are rejected; unresolved same-revision conflicts carry `ambiguous: true` and are excluded from usable values. |
+| `GET /api/v1/signals/catalog` | All 1,312 checked-in seed IDs plus stable IDs added for evaluated newer-drug outputs; identity fields, units, source, and last period. Search and pagination are supported. |
+| `POST /api/v1/signals/latest` | Latest usable recorded observations in `values` for up to 1,500 IDs, including the full current catalog in one call. `latest_recorded_values` contains the absolute latest stored row for every requested ID with a record, including unvalidated rows flagged `usable: false`. For IDs without a usable value, `unusable_recorded_values` highlights that archived row; `missing_ids` and `missing_details` report the usable-value gap. Unknown IDs have no recorded row. Date filters are rejected; unresolved same-revision conflicts carry `ambiguous: true` and are excluded from usable values. |
 | `POST /api/v1/signals/history` | Recorded values for up to 100 IDs on an exact `date` or any `start_date`/`end_date` range, including the full available 2013–present history. The newest source revision for each period is returned by default; `include_revisions: true` returns each recorded revision for point-in-time training. Missing dates are absent. A request exceeding 10,000 raw source rows returns HTTP 413 with no truncated result; split IDs or dates. Browser training retries smaller ID batches automatically. |
 | `GET /api/v1/signals/freshness` | Catalog counts, latest periods, and last worker run. |
 | `GET /api/v1/signals/coverage` | Per-ID gap status and age of the latest observation. |
@@ -375,6 +401,14 @@ availability remain excluded from point-in-time training.
 An early schema used a separate `signal_observations` table. Startup retains
 that table if found: matching total row counts cannot prove its records were
 migrated. Remove it only after a row-level audit of that database.
+
+Both the signal and account SQLite databases now use explicit `user_version`
+schema versions. Startup applies idempotent version-1 migrations once while
+holding an OS file lock shared by API processes, rejects databases created by
+a newer service version, and keeps legacy tables until their rows have been
+audited. The signal store's current schema migration retains the older
+`signal_observations` table for that reason. A fresh verified database backup
+was taken before setting the migration versions on the live service.
 
 ## Current coverage, as of 2026-10-03
 
@@ -407,9 +441,9 @@ news-model output IDs. The read-only signal-store audit verifies each archived
 version's content hash and aware source/capture times; backup restore rehearsal
 reports the audited version count. On 2026-10-06 UTC, a live FDA Press refresh
 captured its first version, and a new local snapshot restored with one audited
-news version, 1,312 catalog IDs, and 1,324 ranked drugs.
+news version, the 1,312 seed IDs, and 1,324 ranked drugs.
 
-The gap report now marks 1,212 legacy drug IDs with a separate evaluated
+The gap report now marks 1,324 drug IDs with a separate evaluated
 two-year baseline projection for 2026 and 18 ATC demand outputs that still
 require current source data and a validated model rerun. The 20 news-model
 outputs have no verified live refresh path; 62 external variables have
@@ -463,6 +497,20 @@ news-model features remain in `/history`, marked as historical-only;
 `/latest` omits them until a verified live refresh path exists. This prevents an FDA
 shortage record or an article timestamp from being misrepresented as a drug
 demand prediction.
+The historical downstream fit code is recoverable from commit `d5e11df` and
+now reads the canonical bundled news table through the model adapter. An
+offline fit on 2026-10-07 succeeded with 20 news inputs (monthly history ends
+2026-01), 18 Arkansas ATC classifier heads, and five CMS state classifiers
+covering 1,368 drug keys. The CMS component is five shared one-vs-rest heads,
+not 1,368 per-drug models. `build_state_demand_view` forms one-year
+transitions and drops the last source year without a following label. Since
+the local CMS source ends in 2024, the latest transition row has feature year
+2023 and target year 2024. The old output fits on all those transitions and
+predicts the latest row in-sample; it is not a held-out 2025 forecast and
+cannot produce a 2026 value under that contract. The current public API
+continues to publish the separately evaluated two-year CMS persistence
+projection for 2024→2026. The integrated historical fit is therefore
+reproducible, but not yet the live model service.
 The `/latest` API returns `missing_details` for IDs without a usable value,
 with a coverage reason and last recorded period; unknown IDs receive
 `unknown_id`. Its separate `unusable_recorded_values` array lets callers
@@ -597,19 +645,23 @@ not an estimate of current dispensing, pharmacy inventory, or units to order.
 The drug-ranking API returns the four historical annual-claims cutoffs used to
 assign its five ordinal states as `state_thresholds_claims`; it does not turn
 those states into pharmacy purchase units.
-The existing 1,312 catalog IDs and their original 2025 records remain intact.
-The 1,212 matching drug IDs have an additional 2026 forecast-horizon record;
-`/latest` selects that horizon, while `/history` retains both horizons. The
-separate ranking includes 112 newer drugs that have no legacy catalog ID.
-This baseline does not clear the universal model audit, restore the missing
-news-model runner, or provide a daily news-conditioned drug forecast.
+The original 1,312 seed IDs and their historical records remain intact. The
+1,212 matching drug IDs have an additional 2026 forecast-horizon record; 112
+newer CMS drug outputs receive deterministic IDs when the evaluated baseline
+is recorded. `/latest` selects the usable 2026 horizon, while `/history`
+retains prior horizons. The current database therefore has 1,424 signal
+definitions, including all 1,312 seed IDs and 1,324 uniquely identified drug
+outputs.
+This baseline does not clear the universal model audit or provide a daily
+news-conditioned drug forecast. The historical downstream runner fits offline;
+its missing upstream 20-feature inference path still prevents live use.
 
 ## Live inputs and keys
 
 | Input | Current implementation | Credential needed |
 | --- | --- | --- |
 | [openFDA drug shortages](https://open.fda.gov/apis/drug/drugshortages/how-to-use-the-endpoint/) | Daily full snapshot, source `last_updated`, raw record JSON, record change dates, and an immutable membership list for each successful fetch. The latest API view reads one complete fetch even when the source changes twice on the same UTC day. It does not refresh a model signal. | A free `OPENFDA_API_KEY` is recommended for sustained deployment; the local two-page daily pull works without a key under [openFDA's lower unauthenticated limits](https://open.fda.gov/apis/authentication/). |
-| [GDELT DOC 2.0](https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/) | Daily recent article metadata, title relevance, and GDELT `seendate` (first seen by the feed; publisher publication time is not verified). This endpoint has intermittently returned connection resets and HTTP 429 from the local network; its attempt and error are recorded separately. [GDELT confirms rate limiting and request shedding](https://blog.gdeltproject.org/scaling-gdelt-for-a-new-era-migrating-to-spanner-with-agentic-interactive-gemini/). | No key for the DOC API, but outbound access to `api.gdeltproject.org` is needed. |
+| [GDELT DOC 2.0](https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/) | Daily recent article metadata, title relevance, and GDELT `seendate` (first seen by the feed; publisher publication time is not verified). The worker catches up at most 90 days in three-day windows, splits result-capped windows, and waits 10 seconds between follow-up requests (64-request hard limit). GDELT documents a rolling three-month search limit and warns that its DOC API is rate limited; this conservative delay has not yet been verified against a successful catch-up. The WSL worker loaded this change at 2026-10-07 02:29 UTC; its next GDELT retry remains subject to the six-hour failure cooldown. | No key for the DOC API, but outbound access to `api.gdeltproject.org` is needed. |
 | [FDA Drugs RSS](https://www.fda.gov/about-fda/contact-fda/subscribe-podcasts-and-news-feeds) | Checked independently each day for recent FDA drug approval, recall, shortage, and safety event titles, even when GDELT fails. A named medicine can qualify without a generic “drug” keyword; generic approval-notification index pages are excluded. A feed update is not necessarily the date a medical event occurred. | No key. |
 | [FDA MedWatch RSS](https://www.fda.gov/safety/medwatch-fda-safety-information-and-adverse-event-reporting-program/medwatch-rss-feed) | Checked independently for drug-keyword safety alerts. Device-only paths and items without drug terms are excluded; an empty three-day window stays empty. The RSS date is the feed item date, not a demand observation. | No key. |
 | [FDA Recalls RSS](https://www.fda.gov/about-fda/contact-fda/subscribe-podcasts-and-news-feeds) | Checked independently for recent drug-related recall notices. Food-only notices are excluded. The RSS date is the feed item date, not a demand observation. | No key. |
@@ -618,7 +670,7 @@ news-model runner, or provide a daily news-conditioned drug forecast.
 | [Medicaid and CHIP enrollment and performance](https://data.medicaid.gov/dataset/6165f45b-ca93-5bb5-9d06-db29c692a360) | Daily poll of eight Arkansas monthly measures via the official data API. Preliminary and final revisions are distinguished; absent cells are skipped. The first retrieval time is stored because the row publication timestamp is unavailable. | No key for the public data API. |
 | [CMS Medicare Geographic Variation](https://data.cms.gov/summary-statistics-on-use-and-payments/medicare-geographic-comparisons/medicare-geographic-variation-by-national-state-county) | Daily check of nine national annual catalog measures. The latest official year is 2024 as of this check; no 2025 or 2026 value is inferred. | Public data API, no key. |
 | [NADAC 2026](https://data.medicaid.gov/dataset/fbb83258-11c7-47f5-8b18-5f8e79f7e704) | Daily full latest-date snapshot; computes rate counts and min/mean/max within each rate classification and pricing unit. It does not publish to four legacy IDs with collapsed dimensions. | No key for the public data API. Annual dataset ID rollover must be checked before 2027. |
-| [CMS Part D Geography and Drug](https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/medicare-part-d-prescribers-by-geography-and-drug) | The daily worker checks CMS's `data.json` catalog for published annual CSVs and the latest CSV's `Last-Modified` header for same-URL revisions. It aggregates Arkansas state rows by generic drug and total claims, commits a versioned normalized panel through an atomic manifest pointer, then reruns the evaluated two-year persistence baseline. After an outage it imports every newer published year in order; unpublished years stay absent. As of this check, 2024 remains the latest release. The stronger news-conditioned runner is unavailable. | Public download/API, no key required. |
+| [CMS Part D Geography and Drug](https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/medicare-part-d-prescribers-by-geography-and-drug) | The daily worker checks CMS's `data.json` catalog for published annual CSVs and the latest CSV's `Last-Modified` header for same-URL revisions. It aggregates Arkansas state rows by generic drug and total claims, commits a versioned normalized panel through an atomic manifest pointer, then reruns the evaluated two-year persistence baseline. After an outage it imports every newer published year in order; unpublished years stay absent. As of this check, 2024 remains the latest release. The historical 20-news-feature downstream fit is trainable offline, but its source data ends in 2024 for CMS claims and its upstream live news inference path is absent. | Public download/API, no key required. |
 | [HHS Medicaid Provider Spending by NDC](https://opendata.hhs.gov/datasets/medicaid-provider-spending-ndc/) | Historical local source through 2024-12. The official July 2026 release also describes coverage ending in December 2024; no 2025 or 2026 monthly claim line is inferred. | Public download, no key identified. |
 | [CMS State Drug Utilization Data 2026](https://data.medicaid.gov/dataset/2957a7f9-9a15-453e-9afd-3bbdcbac8fd3) | The worker discovers the latest annual SDUD release from the official Medicaid metastore each day, then captures Arkansas rows by NDC and utilization type. It stores the catalog modification time, retrieval time, and separate content revisions. Suppressed counts remain unknown. On 2026-10-03 only Q1 was published: 22,703 Arkansas rows, 12,264 suppressed. The 1,368,827 reported prescriptions are a lower bound. This is a quarterly statewide Medicaid source, not the monthly pharmacy-provider target of the historical ATC model. | No key for the public data API. |
 | CDC, NOAA, NWS, FEMA, NADAC | Research-package adapters exist, but the 1,312-signal production refresh has not been connected and verified. | Check each official source's current access rules before deployment. |
@@ -637,7 +689,7 @@ pharmacy-provider claim-line target, so it cannot supply a valid current
 feature vector for the 18 model IDs. This remains true even if the crosswalk
 is expanded; source and outcome compatibility must be evaluated separately.
 
-On 2026-10-05 UTC, GDELT still returned HTTP 429 after scheduled retries.
+On 2026-10-07 UTC, GDELT's most recent scheduled attempt returned HTTP 429; FDA Drugs, MedWatch, Recalls, and Press RSS checks succeeded. The updated worker restarted at 02:29 UTC and its heartbeat is current. No GDELT request has run under the new pacing yet, so it remains unverified against a successful upstream response.
 The FDA Drugs feed succeeded and recorded one recent drug-event item. A third
 adapter now reads the [official FDA MedWatch RSS feed](https://www.fda.gov/safety/medwatch-fda-safety-information-and-adverse-event-reporting-program/medwatch-rss-feed)
 and retains drug-keyword safety items, excluding device-only alerts.
@@ -760,7 +812,10 @@ before any hosted deployment.
 The old `/api/demand/*` server upload and training routes are disabled by
 default. They can be enabled for local migration testing with
 `ENABLE_LEGACY_SERVER_TRAINING=true`, but production configuration rejects
-that setting. The current SQLite store is suitable
-for a single local machine; concurrent cloud replicas require a shared
-database and migrations. These items, source refresh coverage, account
-recovery, monitoring, and a deployment rehearsal remain open production gates.
+that setting. The current SQLite store and its versioned startup migrations
+are scoped to a single API host with one persistent data volume. Before
+running concurrent cloud API replicas, move to a shared database service such
+as PostgreSQL and deploy database-native migration and connection-pooling
+support; the SQLite file locks do not make a multi-host database safe.
+Account recovery, complete source refresh coverage, monitoring/alert routing,
+and a deployment rehearsal also remain open production gates.

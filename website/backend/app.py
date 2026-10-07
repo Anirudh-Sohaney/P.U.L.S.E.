@@ -17,6 +17,7 @@ from . import signal_store
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
     signal_store.initialize()
+    auth.initialize()
     yield
     # Shutdown
 

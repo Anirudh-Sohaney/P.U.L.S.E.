@@ -86,12 +86,14 @@ def rehearse(snapshot: Path, *, expected_catalog: int = 1312,
             ready = ready_response.json()
             catalog = catalog_response.json()
             ranking = ranking_response.json()
+            ranked_rows = ranking.get("drugs", [])
             if (ready_response.status_code != 200 or not ready["ready"]
-                    or ready["signal_definitions"] != expected_catalog
+                    or ready["signal_definitions"] < expected_catalog
                     or catalog_response.status_code != 200
-                    or catalog["count"] != expected_catalog
+                    or catalog["count"] < expected_catalog
                     or ranking_response.status_code != 200
-                    or ranking["total"] < 1):
+                    or ranking["total"] < 1
+                    or any(not row.get("id") for row in ranked_rows)):
                 raise ValueError("Restored API did not satisfy its catalog and ranking checks")
             return {"catalog_signals": catalog["count"],
                     "restored_accounts": restored_accounts,

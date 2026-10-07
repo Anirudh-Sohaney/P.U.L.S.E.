@@ -49,7 +49,7 @@ it does not pass the 70% exact-accuracy requirement.
 The first unified news-head experiment is reproducible with
 `model/scripts/evaluate_part_a_news.py --root . --news-only`. It uses the
 previous month's 20 news signals and later HHS, FDA, and CDC observations. A
-fresh run on 2026-10-05 produced 96 joined months, 18 evaluable nonconstant
+fresh run on 2026-10-07 produced 96 joined months, 18 evaluable nonconstant
 targets, and 5 promotion candidates after majority-baseline comparison. Only
 one of those five reached 70% exact accuracy. It therefore does not
 independently meet the ten-head requirement.
@@ -60,10 +60,12 @@ structured input, while keeping news one month behind. After correcting the
 CDC period field to use `epiweek` rather than its release `issue` code, the
 run evaluated 18 heads and produced **11 promotion candidates**. Four were
 CDC FluView level heads, five were national CDC age-band heads, and two were
-HHS drug-activity heads. This meets the prototype's 10-head threshold for a
-combined external-input layer. The gain is persistence-heavy: the lagged
-input is a strong contributor, so this does not prove that news alone caused
-the result.
+HHS drug-activity heads. Eight of the 11 met the 70% exact-accuracy threshold;
+the other three qualified only through true-positive precision while having
+lower raw accuracy. This meets the prototype's 10-head candidate threshold for
+a combined external-input layer, not the requirement for ten accurate news
+signals. The gain is persistence-heavy: the lagged input is a strong
+contributor, so this does not prove that news alone caused the result.
 
 For clarity, these 11 promotion candidates are output heads, not 11
 independent news signals. The four CDC level heads are `flu_ar_ili`,

@@ -34,6 +34,12 @@ DRUG_RECALL_TERMS = ("drug", "medicine", "medication", "pharmacy", "pharmaceutic
                      "tablets", "vial", "vials", "insulin", "antibiotic")
 FDA_PRESS_EVENT_TERMS = ("approv", "recall", "shortage", "safety", "warning",
                          "treatment", "research", "drug", "medicine", "medication")
+NEWS_DEFAULT_WINDOW = timedelta(days=3)
+NEWS_CATCHUP_LIMIT = timedelta(days=90)
+GDELT_QUERY_WINDOW = timedelta(days=3)
+GDELT_MAX_RECORDS = 250
+GDELT_MAX_REQUESTS = 64
+GDELT_REQUEST_INTERVAL_SECONDS = 10
 
 
 def _evidence_row(row: dict, source_name: str, fetched_at: str) -> tuple:
@@ -52,20 +58,19 @@ def _evidence_row(row: dict, source_name: str, fetched_at: str) -> tuple:
             fields["matched_terms"], fields["summary_text"])
 
 
-def fetch_recent_news(*, timeout: int = 25) -> list[dict]:
+def _gdelt_articles(start: datetime, end: datetime, *, timeout: int) -> list[dict]:
     params = urlencode({"query": NEWS_QUERY, "mode": "artlist", "format": "json",
-                        "timespan": "3d", "maxrecords": 100, "sort": "datedesc"})
+                        "startdatetime": start.strftime("%Y%m%d%H%M%S"),
+                        "enddatetime": end.strftime("%Y%m%d%H%M%S"),
+                        "maxrecords": GDELT_MAX_RECORDS, "sort": "datedesc"})
     request = Request(f"{GDELT_DOC_URL}?{params}", headers={
-        "User-Agent": "PULSE-public-signal-monitor/1.0",
-        "Accept": "application/json",
-    })
+        "User-Agent": "PULSE-public-signal-monitor/1.0", "Accept": "application/json"})
     for attempt in range(3):
         try:
             with urlopen(request, timeout=timeout) as response:  # fixed HTTPS URL
                 payload = json.load(response)
             break
         except HTTPError as exc:
-            # A rate limit is a source policy, not a transient connection fault.
             if exc.code < 500 or attempt == 2:
                 raise
         except (URLError, OSError):
@@ -75,39 +80,92 @@ def fetch_recent_news(*, timeout: int = 25) -> list[dict]:
     articles = payload.get("articles", [])
     if not isinstance(articles, list):
         raise ValueError("GDELT response has no article list")
-    cutoff = datetime.now(timezone.utc) - timedelta(days=3)
-    output: list[dict] = []
-    for item in articles:
-        title = str(item.get("title") or "").strip()
-        url = str(item.get("url") or "").strip()
-        parsed_url = urlparse(url)
-        if not title or parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
-            continue
-        seen_raw = str(item.get("seendate") or "")
-        try:
-            seen = datetime.strptime(seen_raw, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-        if seen < cutoff or seen > datetime.now(timezone.utc) + timedelta(minutes=5):
-            continue
-        matches = [term for term in RELEVANT_TERMS if term in title.lower()]
-        if not matches:
-            continue
-        output.append({"url_hash": hashlib.sha256(url.encode()).hexdigest(),
-                       "title": title[:500], "url": url,
-                       "source": str(item.get("domain") or parsed_url.netloc)[:160],
-                       "published_at": seen.isoformat(), "relevance_score": len(matches),
-                       "matched_terms": ",".join(matches),
-                       "summary_text": str(item.get("snippet") or "")[:4000]})
-    return output
+    return articles
 
 
-def fetch_fda_drug_updates(*, timeout: int = 25) -> list[dict]:
+def fetch_recent_news(*, timeout: int = 25, cutoff: datetime | None = None) -> list[dict]:
+    now = datetime.now(timezone.utc)
+    start = cutoff or now - NEWS_DEFAULT_WINDOW
+    if start.tzinfo is None:
+        raise ValueError("GDELT cutoff must be timezone-aware")
+    start = start.astimezone(timezone.utc)
+    if start > now or now - start > NEWS_CATCHUP_LIMIT:
+        raise ValueError("GDELT catch-up exceeds the supported 90-day window")
+    seen_articles: dict[str, dict] = {}
+    requests = 0
+
+    def collect(window_start: datetime, window_end: datetime) -> None:
+        nonlocal requests
+        requests += 1
+        if requests > GDELT_MAX_REQUESTS:
+            raise RuntimeError("GDELT catch-up exceeded its 64-request safety limit")
+        if requests > 1:
+            # GDELT has no published per-client quota. Its operator notes that
+            # small QPS changes can trigger 429s, so keep catch-up deliberately
+            # slow; FDA feeds remain independent fallbacks during this wait.
+            time.sleep(GDELT_REQUEST_INTERVAL_SECONDS)
+        articles = _gdelt_articles(window_start, window_end, timeout=timeout)
+        if len(articles) >= GDELT_MAX_RECORDS:
+            if window_end - window_start <= timedelta(minutes=15):
+                raise RuntimeError("GDELT article window still reaches its result cap at 15 minutes")
+            middle = window_start + (window_end - window_start) / 2
+            collect(window_start, middle + timedelta(seconds=1))
+            collect(middle - timedelta(seconds=1), window_end)
+            return
+        for item in articles:
+            article = _parse_gdelt_article(item, start, now)
+            if article:
+                seen_articles[article["url_hash"]] = article
+
+    window_start = start
+    while window_start < now:
+        window_end = min(window_start + GDELT_QUERY_WINDOW, now)
+        collect(window_start, window_end)
+        if window_end == now:
+            break
+        window_start = window_end - timedelta(seconds=1)
+    return list(seen_articles.values())
+
+
+def _parse_gdelt_article(item: dict, cutoff: datetime, now: datetime) -> dict | None:
+    title = str(item.get("title") or "").strip()
+    url = str(item.get("url") or "").strip()
+    parsed_url = urlparse(url)
+    if not title or parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+        return None
+    seen_raw = str(item.get("seendate") or "")
+    try:
+        seen = datetime.strptime(seen_raw, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    if seen < cutoff or seen > now + timedelta(minutes=5):
+        return None
+    matches = [term for term in RELEVANT_TERMS if term in title.lower()]
+    if not matches:
+        return None
+    return {"url_hash": hashlib.sha256(url.encode()).hexdigest(),
+            "title": title[:500], "url": url,
+            "source": str(item.get("domain") or parsed_url.netloc)[:160],
+            "published_at": seen.isoformat(), "relevance_score": len(matches),
+            "matched_terms": ",".join(matches),
+            "summary_text": str(item.get("snippet") or "")[:4000]}
+
+
+def _effective_cutoff(cutoff: datetime | None) -> datetime:
+    if cutoff is None:
+        return datetime.now(timezone.utc) - NEWS_DEFAULT_WINDOW
+    if cutoff.tzinfo is None:
+        raise ValueError("News cutoff must be timezone-aware")
+    return cutoff.astimezone(timezone.utc)
+
+
+def fetch_fda_drug_updates(*, timeout: int = 25,
+                           cutoff: datetime | None = None) -> list[dict]:
     """Verified FDA RSS fallback when a general news source is unavailable."""
     request = Request(FDA_DRUGS_RSS_URL, headers={"User-Agent": "PULSE-public-signal-monitor/1.0"})
     with urlopen(request, timeout=timeout) as response:  # fixed HTTPS URL
         root = ElementTree.fromstring(response.read(2 * 1024 * 1024))
-    cutoff = datetime.now(timezone.utc) - timedelta(days=3)
+    cutoff = _effective_cutoff(cutoff)
     output = []
     for item in root.findall("./channel/item"):
         title = (item.findtext("title") or "").strip()
@@ -136,13 +194,14 @@ def fetch_fda_drug_updates(*, timeout: int = 25) -> list[dict]:
     return output
 
 
-def fetch_fda_medwatch_updates(*, timeout: int = 25) -> list[dict]:
+def fetch_fda_medwatch_updates(*, timeout: int = 25,
+                               cutoff: datetime | None = None) -> list[dict]:
     """Drug-related FDA MedWatch safety alerts, excluding device-only notices."""
     request = Request(FDA_MEDWATCH_RSS_URL, headers={
         "User-Agent": "PULSE-public-signal-monitor/1.0"})
     with urlopen(request, timeout=timeout) as response:
         root = ElementTree.fromstring(response.read(2 * 1024 * 1024))
-    cutoff = datetime.now(timezone.utc) - timedelta(days=3)
+    cutoff = _effective_cutoff(cutoff)
     output = []
     for item in root.findall("./channel/item"):
         title = (item.findtext("title") or "").strip()
@@ -173,13 +232,14 @@ def fetch_fda_medwatch_updates(*, timeout: int = 25) -> list[dict]:
     return output
 
 
-def fetch_fda_drug_recalls(*, timeout: int = 25) -> list[dict]:
+def fetch_fda_drug_recalls(*, timeout: int = 25,
+                           cutoff: datetime | None = None) -> list[dict]:
     """Keep drug-specific announcements from FDA's broader recalls feed."""
     request = Request(FDA_RECALLS_RSS_URL, headers={
         "User-Agent": "PULSE-public-signal-monitor/1.0"})
     with urlopen(request, timeout=timeout) as response:
         root = ElementTree.fromstring(response.read(2 * 1024 * 1024))
-    cutoff = datetime.now(timezone.utc) - timedelta(days=3)
+    cutoff = _effective_cutoff(cutoff)
     output = []
     for item in root.findall("./channel/item"):
         title = (item.findtext("title") or "").strip()
@@ -211,13 +271,14 @@ def fetch_fda_drug_recalls(*, timeout: int = 25) -> list[dict]:
     return output
 
 
-def fetch_fda_drug_press(*, timeout: int = 25) -> list[dict]:
+def fetch_fda_drug_press(*, timeout: int = 25,
+                         cutoff: datetime | None = None) -> list[dict]:
     """Drug-related FDA press announcements; these are context, not demand data."""
     request = Request(FDA_PRESS_RSS_URL, headers={
         "User-Agent": "PULSE-public-signal-monitor/1.0"})
     with urlopen(request, timeout=timeout) as response:
         root = ElementTree.fromstring(response.read(2 * 1024 * 1024))
-    cutoff = datetime.now(timezone.utc) - timedelta(days=3)
+    cutoff = _effective_cutoff(cutoff)
     output = []
     for item in root.findall("./channel/item"):
         title = (item.findtext("title") or "").strip()
@@ -261,12 +322,19 @@ def refresh_news(sources: tuple[str, ...] | None = None) -> dict:
         raise ValueError("Unknown public news source")
     for source_name in selected:
         fetcher = fetchers[source_name]
-        started = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
+        started = now.isoformat()
         with connect() as db:
+            last_success = db.execute("""SELECT MAX(finished_at) FROM refresh_runs
+                WHERE source_name=? AND status='success'""", (source_name,)).fetchone()[0]
             run_id = db.execute("""INSERT INTO refresh_runs(source_name, started_at, status)
                 VALUES (?, ?, 'running')""", (source_name, started)).lastrowid
         try:
-            articles = fetcher()
+            cutoff = now - NEWS_DEFAULT_WINDOW
+            if last_success:
+                cutoff = min(cutoff, datetime.fromisoformat(last_success).astimezone(
+                    timezone.utc) - timedelta(hours=1))
+            articles = fetcher(cutoff=cutoff)
             fetched = datetime.now(timezone.utc).isoformat()
             with connect() as db:
                 if source_name == "fda_drugs_rss":

@@ -11,11 +11,13 @@ from datetime import date, datetime
 from pathlib import Path
 
 from backend.config import settings
-from backend.signal_store import catalog_rows, news_version_hash
+from backend.signal_store import IDENTITY_FIELDS, catalog_rows, news_version_hash, signal_uid
 from scripts.import_signal_catalog import DEFAULT_HISTORY, DEFAULT_HISTORY_SHA256
 
 
 UNKNOWN_SOURCE_TIME_KINDS = {"historical_catalog", "historical_news_bridge"}
+DEFAULT_DEFINITIONS = (Path(__file__).resolve().parents[1] / "catalog" /
+                       "signal_definitions.json")
 
 
 def _date(value: str) -> bool:
@@ -62,9 +64,28 @@ def audit(path: Path | None = None, *, expected_definitions: int = 1312,
             problems.append("SQLite integrity check failed")
         if db.execute("PRAGMA foreign_key_check").fetchone() is not None:
             problems.append("SQLite foreign key check failed")
-        definitions = db.execute("SELECT COUNT(*) FROM signal_definitions").fetchone()[0]
-        if definitions != expected_definitions:
-            problems.append(f"Expected {expected_definitions} signal definitions, found {definitions}")
+        definition_rows = list(db.execute("SELECT * FROM signal_definitions"))
+        definitions = len(definition_rows)
+        if definitions < expected_definitions:
+            problems.append(
+                f"Expected at least {expected_definitions} signal definitions, found {definitions}")
+        for definition in definition_rows:
+            identity = {field: definition[field] for field in IDENTITY_FIELDS}
+            if definition["id"] != signal_uid(identity):
+                problems.append(f"{definition['id']}: signal ID does not match its identity")
+                if len(problems) >= 20:
+                    break
+        seed_payload = json.loads(DEFAULT_DEFINITIONS.read_text(encoding="utf-8"))
+        seed_rows = seed_payload.get("definitions")
+        seed_ids = {row.get("id") for row in seed_rows or [] if isinstance(row, dict)}
+        if (seed_payload.get("schema") != "pulse_signal_definitions_v1"
+                or seed_payload.get("definition_count") != expected_definitions
+                or len(seed_ids) != expected_definitions):
+            raise ValueError("Signal seed definition manifest count or schema mismatch")
+        present_definition_ids = {row["id"] for row in definition_rows}
+        missing_seed_ids = seed_ids - present_definition_ids
+        if missing_seed_ids:
+            problems.append(f"{len(missing_seed_ids)} seeded signal definitions are missing")
         records = 0
         for row in db.execute("""SELECT row_hash, signal_uid, source_kind, signal_date,
                 observation_date, source_timestamp, ingested_at, value,

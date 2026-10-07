@@ -8,11 +8,14 @@ legacy example at ``model/final_predictions.json``.
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from typing import Optional
 from sklearn.linear_model import LogisticRegression
 import warnings
 
 # Use the internal regression tools
 from arkansas_pharma_signal.regression import LogisticRidge
+from arkansas_pharma_signal.config import Config
+from arkansas_pharma_signal.news_only_adapter import load_news_only_features
 from arkansas_pharma_signal.therapeutic_class_demand import build_therapeutic_class_panel
 from arkansas_pharma_signal.regional_demand_state import FEATURES, build_state_demand_view
 
@@ -24,14 +27,10 @@ ARKANSAS_QUALIFIED_ATC = [
     "A06", "V03", "C02", "M03", "D01", "L01", "C03", "N07", "D10", "V04"
 ]
 
-def load_historical_news_signals():
-    """Load the external model's dated table when available locally."""
-    root = Path(__file__).resolve().parent.parent
-    path = root / "existing_models/news_signal_model/data/derived/signals_monthly.csv"
-    if not path.is_file():
-        raise FileNotFoundError(
-            f"Historical news-model table is absent: {path}. The upstream runner is not checked in.")
-    news = pd.read_csv(path)
+def load_historical_news_signals(root_dir: Optional[Path] = None):
+    """Load the bundled dated 20-signal table for historical research fits."""
+    root = Path(root_dir or Path(__file__).resolve().parent.parent).expanduser().resolve()
+    news = load_news_only_features(Config(root=str(root)))
     news["month"] = pd.to_datetime(news["date"]).dt.to_period("M")
     return news
 
@@ -53,7 +52,7 @@ class ProductionModel:
         print("--- Training Complete ---")
 
     def _train_news_pipeline(self):
-        self.news = load_historical_news_signals()
+        self.news = load_historical_news_signals(self.root)
         self.news_features = [c for c in self.news.columns if c not in ["date", "month"]]
         print(f"Loaded 20 base News Signals: {len(self.news)} historical months.")
 
@@ -115,7 +114,7 @@ class ProductionModel:
         print(f"Successfully trained {len(self.arkansas_models)} Arkansas ATC models.")
 
     def _train_cms_pipeline(self):
-        print("Training 1,368 CMS Part D Annual Drug Models...")
+        print("Training shared CMS Part D five-state demand heads...")
         demand_source = self.root / "data/targeted_additions/cms_partd_geography_drug/data/arkansas_partd_geography_drug_by_year.csv.gz"
         if not demand_source.exists():
             print("[WARNING] CMS Data not found locally. Please fetch using API.")

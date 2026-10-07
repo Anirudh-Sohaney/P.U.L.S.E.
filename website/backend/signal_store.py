@@ -10,6 +10,7 @@ import hashlib
 import io
 import json
 import math
+import re
 import sqlite3
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -18,6 +19,7 @@ from typing import Iterable
 import pandas as pd
 
 from .config import settings
+from .database_locks import exclusive_file_lock
 
 
 IDENTITY_FIELDS = (
@@ -30,6 +32,7 @@ COLLAPSED_DIMENSION_SIGNALS = {
     "shortage_active", "recall_active",
 }
 MAX_HISTORY_SOURCE_ROWS = 10_000
+SIGNAL_SCHEMA_VERSION = 1
 NEWS_VERSION_FIELDS = ("url_hash", "source_name", "title", "url", "source",
                        "source_timestamp", "timestamp_kind", "relevance_score",
                        "matched_terms", "summary_text")
@@ -56,15 +59,40 @@ def database_path() -> Path:
 
 
 def connect() -> sqlite3.Connection:
-    connection = sqlite3.connect(database_path(), timeout=30)
+    path = database_path()
+    connection = sqlite3.connect(path, timeout=30)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA busy_timeout=30000")
-    connection.execute("PRAGMA journal_mode=WAL")
+    if connection.execute("PRAGMA journal_mode").fetchone()[0].lower() != "wal":
+        with exclusive_file_lock(path.with_name(path.name + ".journal.lock")):
+            if connection.execute("PRAGMA journal_mode").fetchone()[0].lower() != "wal":
+                connection.execute("PRAGMA journal_mode=WAL")
     connection.execute("PRAGMA foreign_keys=ON")
     return connection
 
 
 def initialize() -> None:
+    with connect() as db:
+        version = db.execute("PRAGMA user_version").fetchone()[0]
+    if version > SIGNAL_SCHEMA_VERSION:
+        raise RuntimeError(f"Signal database schema {version} is newer than this service")
+    if version == SIGNAL_SCHEMA_VERSION:
+        return
+    path = database_path()
+    with exclusive_file_lock(path.with_name(path.name + ".schema.lock")):
+        with connect() as db:
+            version = db.execute("PRAGMA user_version").fetchone()[0]
+        if version > SIGNAL_SCHEMA_VERSION:
+            raise RuntimeError(f"Signal database schema {version} is newer than this service")
+        if version == SIGNAL_SCHEMA_VERSION:
+            return
+        _initialize_schema_v1()
+        with connect() as db:
+            db.execute(f"PRAGMA user_version={SIGNAL_SCHEMA_VERSION}")
+
+
+def _initialize_schema_v1() -> None:
+    """Create the current tables and migrate the unversioned legacy schema."""
     with connect() as db:
         db.executescript("""
         CREATE TABLE IF NOT EXISTS signal_definitions (
@@ -287,6 +315,31 @@ def import_definitions(source: Path) -> dict:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", definitions)
         inserted = db.total_changes - before
     return {"definitions_seen": len(definitions), "definitions_inserted": inserted}
+
+
+def catalog_seed_status() -> dict:
+    """Check that the complete checked-in seed manifest is present in the DB."""
+    manifest_path = Path(__file__).resolve().parents[1] / "catalog" / "signal_definitions.json"
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    rows = payload.get("definitions")
+    expected = payload.get("definition_count")
+    if (payload.get("schema") != "pulse_signal_definitions_v1"
+            or not isinstance(rows, list) or not isinstance(expected, int)
+            or len(rows) != expected):
+        raise ValueError("Signal seed definition manifest is malformed")
+    expected_ids = set()
+    for row in rows:
+        if not isinstance(row, dict) or row.get("id") != signal_uid(row):
+            raise ValueError("Signal seed definition manifest has an invalid stable ID")
+        expected_ids.add(row["id"])
+    if len(expected_ids) != expected:
+        raise ValueError("Signal seed definition manifest contains duplicate IDs")
+    with connect() as db:
+        present_ids = {row[0] for row in db.execute("SELECT id FROM signal_definitions")}
+    present_ids.intersection_update(expected_ids)
+    missing_ids = expected_ids - present_ids
+    return {"expected": expected, "present": len(present_ids),
+            "missing_ids": sorted(missing_ids)}
 
 
 def import_news_bridge_history(source: Path) -> dict:
@@ -582,6 +635,13 @@ def freshness() -> dict:
              WHERE latest.source_name=history.source_name
              ORDER BY latest.id DESC LIMIT 1) AS last_status
             FROM refresh_runs history GROUP BY source_name ORDER BY source_name""")]
+        news_model = db.execute("""SELECT COUNT(DISTINCT d.id) AS signal_count,
+            MAX(r.observation_date) AS latest_recorded_observation_date
+            FROM signal_definitions d LEFT JOIN signal_records r ON r.signal_uid=d.id
+            WHERE d.signal_origin='model_news_output'""").fetchone()
+        news_model_run = db.execute("""SELECT started_at, finished_at, status, rows_written
+            FROM refresh_runs WHERE source_name='legacy_20_signal_news_model'
+            ORDER BY id DESC LIMIT 1""").fetchone()
     worker_checked_at = worker_heartbeat["checked_at"] if worker_heartbeat else None
     worker_recent = False
     if worker_checked_at:
@@ -593,6 +653,26 @@ def freshness() -> dict:
             pass
     failed_sources = [row["source_name"] for row in source_checks
                       if row["last_status"] == "failed"]
+    if news_model_run is None:
+        news_model_status = "not_configured"
+        news_model_reason = "no_live_inference_run_recorded"
+    elif news_model_run["status"] == "failed":
+        news_model_status = "failed"
+        news_model_reason = "latest_live_inference_run_failed"
+    elif news_model_run["status"] == "running":
+        news_model_status = "running"
+        news_model_reason = "live_inference_run_in_progress"
+    else:
+        news_model_status = "awaiting_validation"
+        news_model_reason = "live_inference_output_has_not_passed_promotion_gate"
+    news_model_status_detail = {
+        "status": news_model_status,
+        "publishable": False,
+        "reason": news_model_reason,
+        "signal_count": news_model["signal_count"],
+        "latest_recorded_observation_date": news_model["latest_recorded_observation_date"],
+        "latest_run": dict(news_model_run) if news_model_run else None,
+    }
     return {"definitions": definitions, "observations": observations,
             "historical_catalog_records": historical_catalog_records,
             "latest_observation_date": latest, "by_cadence": by_cadence,
@@ -601,6 +681,7 @@ def freshness() -> dict:
             "worker_recent": worker_recent,
             "source_checks": source_checks,
             "failed_sources": failed_sources,
+            "news_model": news_model_status_detail,
             "checked_at": checked_at.isoformat()}
 
 
@@ -736,13 +817,30 @@ def news_source_checks() -> dict[str, dict]:
     with connect() as db:
         for name in ("gdelt_recent_news", "fda_drugs_rss", "fda_medwatch_rss",
                      "fda_recalls_rss", "fda_press_rss"):
-            latest = db.execute("""SELECT finished_at, status FROM refresh_runs
+            latest = db.execute("""SELECT finished_at, status, error FROM refresh_runs
                 WHERE source_name=? ORDER BY id DESC LIMIT 1""", (name,)).fetchone()
             success = db.execute("""SELECT MAX(finished_at) FROM refresh_runs
                 WHERE source_name=? AND status='success'""", (name,)).fetchone()[0]
+            error = latest["error"] if latest and latest["status"] == "failed" else None
+            http_match = re.search(r"\bHTTP Error (\d{3})\b", error or "")
+            http_status = int(http_match.group(1)) if http_match else None
+            if http_status == 429:
+                error_code = "rate_limited"
+            elif http_status is not None and http_status >= 500:
+                error_code = "upstream_server_error"
+            elif http_status is not None:
+                error_code = "upstream_http_error"
+            elif error and re.search(r"timed?\s*out|timeout", error, re.I):
+                error_code = "timeout"
+            elif error and re.search(r"connection (?:reset|refused)|urlopen error", error, re.I):
+                error_code = "connection_error"
+            else:
+                error_code = "source_refresh_failed" if error else None
             checks[name] = {"last_status": latest["status"] if latest else "not_checked",
                             "last_attempt_at": latest["finished_at"] if latest else None,
-                            "last_success_at": success}
+                            "last_success_at": success,
+                            "last_error_code": error_code,
+                            "last_error_http_status": http_status}
     return checks
 
 

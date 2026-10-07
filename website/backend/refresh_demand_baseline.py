@@ -15,12 +15,17 @@ import numpy as np
 import pandas as pd
 
 from .refresh_cms_partd_source import source_snapshot
-from .signal_store import connect, initialize
+from .signal_store import connect, initialize, signal_uid
 
 
 SOURCE_KIND = "cms_partd_two_year_persistence_v2"
 MIN_FOLDS = 4
 MIN_BALANCED_ACCURACY = 0.75
+CMS_SIGNAL_SOURCE_NAME = "PULSE production CMS Part D demand output"
+CMS_SIGNAL_SOURCE_URL = (
+    "https://data.cms.gov/provider-summary-by-type-of-service/"
+    "medicare-part-d-prescribers/medicare-part-d-prescribers-by-geography-and-drug"
+)
 
 
 def load_claims(path: Path) -> tuple[pd.DataFrame, str]:
@@ -99,6 +104,33 @@ def evaluate(frame: pd.DataFrame) -> dict:
             "folds": folds}
 
 
+def ensure_drug_signal_definitions(db, drug_keys: list[str]) -> int:
+    """Give each evaluated drug output a stable catalog ID before recording it."""
+    definitions = []
+    for drug_key in sorted(set(drug_keys)):
+        identity = {
+            "signal_origin": "derived_demand_output",
+            "signal_id": f"cms_part_d_demand_state::{drug_key}",
+            "cadence": "annual",
+            "geography_level": "state",
+            "geography_id": "AR",
+            "entity_key": drug_key,
+        }
+        definitions.append((
+            signal_uid(identity),
+            identity["signal_origin"], identity["signal_id"], identity["cadence"],
+            identity["geography_level"], identity["geography_id"], identity["entity_key"],
+            "five_state_demand", CMS_SIGNAL_SOURCE_NAME, CMS_SIGNAL_SOURCE_URL,
+            "0=Lowest to 4=Highest", "predicted_demand_state",
+        ))
+    before = db.total_changes
+    db.executemany("""INSERT OR IGNORE INTO signal_definitions
+        (id, signal_origin, signal_id, cadence, geography_level, geography_id,
+         entity_key, unit, source_name, source_url, state_definition, model_output_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", definitions)
+    return db.total_changes - before
+
+
 def refresh_demand_baseline() -> dict:
     initialize()
     started = datetime.now(timezone.utc).isoformat()
@@ -153,6 +185,8 @@ def refresh_demand_baseline() -> dict:
                 # or the original publication timestamp.
                 db.execute("""UPDATE demand_forecast_runs SET metrics_json=?
                     WHERE run_hash=?""", (json.dumps(metrics), run_hash))
+            definitions_inserted = ensure_drug_signal_definitions(
+                db, current["drug_key"].astype(str).tolist())
             definitions = {row["entity_key"]: row["id"] for row in db.execute("""
                 SELECT id, entity_key FROM signal_definitions
                 WHERE signal_origin='derived_demand_output'
@@ -177,11 +211,13 @@ def refresh_demand_baseline() -> dict:
                      str(target_year), SOURCE_KIND, source_url))
                 signal_rows += db.total_changes - before
             db.execute("""UPDATE refresh_runs SET finished_at=?, status='success',
-                rows_written=? WHERE id=?""", (finished, inserted + signal_rows, run_id))
+                rows_written=? WHERE id=?""",
+                       (finished, inserted + definitions_inserted + signal_rows, run_id))
         return {"source": SOURCE_KIND, "source_year": source_year,
                 "target_year": target_year, "drugs": len(current),
                 "mean_balanced_accuracy": metrics["mean_balanced_accuracy"],
-                "rows_written": inserted, "catalog_rows_written": signal_rows,
+                "rows_written": inserted, "definitions_written": definitions_inserted,
+                "catalog_rows_written": signal_rows,
                 "finished_at": finished}
     except Exception as exc:
         with connect() as db:

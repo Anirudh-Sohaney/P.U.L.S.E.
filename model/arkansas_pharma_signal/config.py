@@ -46,10 +46,10 @@ class Config:
         "targeted_additions/disease_surveillance_current/data"
     )
     news_dir: str = "targeted_additions/arkansas_news_3dlnews/data"
-    # Optional bridge from the separately maintained FLAN-T5 news-only model.
-    # It is materialized into model/artifacts/news/ before panel construction.
+    # Bundled historical output from the separate FLAN-T5 news-only pipeline.
+    # The upstream inference runner is not included; this is not a live feed.
     news_only_features: str = (
-        "existing_models/news_signal_model/data/derived/signals_monthly.csv"
+        "website/catalog/news_only_catalog_features.csv.gz"
     )
     nppes_provider_locations: str = (
         "targeted_additions/nppes_provider_locations/data/"

@@ -250,11 +250,12 @@ The CLI also includes commands for weather refresh/history, county outcomes, eve
 
 The 20-signal FLAN-T5-small news pipeline is maintained outside this package. When its source output is available, the adapter validates and materializes it as a dated feature bridge. The bridge does not directly forecast pharmacy availability. If it changes, rebuild the bridge and panel and retrain models so the saved feature contract matches:
 
-The checked-in `artifacts/news/news_only_catalog_features.csv.gz` is a
-historical bridge through January 2026. Its source table and upstream
-`run_extract.py` are absent from this checkout, so it is not a runnable live
-news-model pipeline. The web service imports its verified historical values
-without promoting them as current outputs.
+The historical 20-signal table is bundled at
+`website/catalog/news_only_catalog_features.csv.gz` and runs through January
+2026. The upstream `run_extract.py` and model-specific inference checkpoint
+are absent, so the table supports downstream research but not live news-model
+inference. The web service imports its verified dated values without
+promoting them as current outputs.
 
 ```bash
 PYTHONPATH=model python -m arkansas_pharma_signal.cli --root . build-news-only-features
@@ -266,7 +267,7 @@ Full source and execution details are in [News-only integration](docs/NEWS_ONLY_
 
 ## Legacy JSON output
 
-`prod_pipeline.py` is a separate, older research workflow. Its historical fit code reads the monthly news-model signal file plus particular CMS/HHS and RxNorm/ATC files. The required external news-model source table and live runner are absent. The script now exits without emitting forecasts, and `ProductionModel.predict()` raises a clear error. The checked-in `model/final_predictions.json` remains a historical example with `news_signals_20`, `arkansas_atc_signals_18`, and `cms_part_d_signals_1300` keys.
+`prod_pipeline.py` is a separate, older research workflow. Its historical fit code reads the bundled monthly news-model signal table plus particular CMS/HHS and RxNorm/ATC files. The upstream news-model inference runner and model-specific checkpoint are absent. The script now exits without emitting forecasts, and `ProductionModel.predict()` raises a clear error. The checked-in `model/final_predictions.json` remains an archival example with `news_signals_20`, `arkansas_atc_signals_18`, and `cms_part_d_signals_1300` keys.
 
 This file is **not** the same as the package CLI’s artifact set: it does not have the canonical row-level forecast contract, and its payload uses categorical demand states. The former zero-vector ATC inference path was removed because it could fabricate a live-looking output. The news loader only reads a local historical CSV; no API key can turn it into a live runner. Treat `final_predictions.json` as a legacy/demo signal bundle unless a new runner is independently implemented, evaluated, and reconciled with the current contracts. Do not cite it as proof of live inference, inventory prediction, or the latest qualified model output.
 

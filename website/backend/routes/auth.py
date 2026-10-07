@@ -8,7 +8,6 @@ import ipaddress
 import os
 import secrets
 import socket
-import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -23,6 +22,7 @@ from jwt.exceptions import PyJWTError
 from pydantic import BaseModel, Field
 
 from ..config import settings
+from ..database_locks import exclusive_file_lock
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token", auto_error=False)
@@ -30,7 +30,7 @@ PASSWORD_HASHER = PasswordHasher(time_cost=2, memory_cost=19 * 1024,
                                  parallelism=1, hash_len=32, salt_len=16,
                                  type=Type.ID)
 DUMMY_PASSWORD_HASH = PASSWORD_HASHER.hash(secrets.token_urlsafe(32))
-_journal_mode_lock = threading.Lock()
+AUTH_SCHEMA_VERSION = 1
 
 
 def _database() -> Path:
@@ -47,29 +47,65 @@ def _database() -> Path:
     return database
 
 
+def initialize() -> None:
+    """Initialize and version the account database before serving requests."""
+    connection = _connect()
+    connection.close()
+
+
 def _connect() -> sqlite3.Connection:
-    connection = sqlite3.connect(_database(), timeout=30)
+    path = _database()
+    connection = sqlite3.connect(path, timeout=30)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA busy_timeout=30000")
     # Switching journal modes on concurrent fresh connections can fail even
     # with a busy timeout; the WAL setting persists after the first switch.
-    with _journal_mode_lock:
+    with exclusive_file_lock(path.with_name(path.name + ".journal.lock")):
         if connection.execute("PRAGMA journal_mode").fetchone()[0] != "wal":
             connection.execute("PRAGMA journal_mode=WAL")
+    version = connection.execute("PRAGMA user_version").fetchone()[0]
+    if version > AUTH_SCHEMA_VERSION:
+        connection.close()
+        raise RuntimeError(f"Account database schema {version} is newer than this service")
+    if version < AUTH_SCHEMA_VERSION:
+        connection.close()
+        _migrate_database(path)
+        connection = sqlite3.connect(path, timeout=30)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout=30000")
     connection.execute("PRAGMA foreign_keys=ON")
-    connection.execute("CREATE TABLE IF NOT EXISTS accounts (username TEXT PRIMARY KEY, password_hash TEXT NOT NULL, created_at TEXT NOT NULL)")
-    connection.execute("""CREATE TABLE IF NOT EXISTS login_attempts
-        (username TEXT NOT NULL, ip TEXT NOT NULL, failed_at TEXT NOT NULL)""")
-    connection.execute("CREATE INDEX IF NOT EXISTS idx_login_attempts ON login_attempts(username, ip, failed_at)")
-    connection.execute("CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip, failed_at)")
-    connection.execute("""CREATE TABLE IF NOT EXISTS registration_attempts
-        (ip TEXT NOT NULL, attempted_at TEXT NOT NULL)""")
-    connection.execute("CREATE INDEX IF NOT EXISTS idx_registration_attempts ON registration_attempts(ip, attempted_at)")
-    connection.execute("""CREATE TABLE IF NOT EXISTS sessions
-        (jti_hash TEXT PRIMARY KEY, username TEXT NOT NULL, expires_at TEXT NOT NULL,
-         created_at TEXT NOT NULL, FOREIGN KEY(username) REFERENCES accounts(username))""")
-    connection.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(username, expires_at)")
     return connection
+
+
+def _migrate_database(path: Path) -> None:
+    """Apply the account schema once, serialized across API worker processes."""
+    with exclusive_file_lock(path.with_name(path.name + ".schema.lock")):
+        connection = sqlite3.connect(path, timeout=30)
+        try:
+            connection.execute("PRAGMA busy_timeout=30000")
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            if version > AUTH_SCHEMA_VERSION:
+                raise RuntimeError(f"Account database schema {version} is newer than this service")
+            if version == AUTH_SCHEMA_VERSION:
+                return
+            connection.execute("PRAGMA foreign_keys=ON")
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute("CREATE TABLE IF NOT EXISTS accounts (username TEXT PRIMARY KEY, password_hash TEXT NOT NULL, created_at TEXT NOT NULL)")
+            connection.execute("""CREATE TABLE IF NOT EXISTS login_attempts
+                (username TEXT NOT NULL, ip TEXT NOT NULL, failed_at TEXT NOT NULL)""")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_login_attempts ON login_attempts(username, ip, failed_at)")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip, failed_at)")
+            connection.execute("""CREATE TABLE IF NOT EXISTS registration_attempts
+                (ip TEXT NOT NULL, attempted_at TEXT NOT NULL)""")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_registration_attempts ON registration_attempts(ip, attempted_at)")
+            connection.execute("""CREATE TABLE IF NOT EXISTS sessions
+                (jti_hash TEXT PRIMARY KEY, username TEXT NOT NULL, expires_at TEXT NOT NULL,
+                 created_at TEXT NOT NULL, FOREIGN KEY(username) REFERENCES accounts(username))""")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(username, expires_at)")
+            connection.execute(f"PRAGMA user_version={AUTH_SCHEMA_VERSION}")
+            connection.commit()
+        finally:
+            connection.close()
 
 
 def _user(username: str):
