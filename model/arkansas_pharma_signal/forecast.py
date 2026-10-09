@@ -12,7 +12,7 @@ combinations.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -43,6 +43,7 @@ TARGETS = [
 ]
 
 HORIZONS_DAYS = [7, 28, 56, 91, 182]
+ANNUAL_HORIZON_DAYS = 365
 
 DRIVER_FEATURES: Dict[str, List[str]] = {
     "influenza": ["ar_ili_mean", "ar_wili_mean", "nat_ili_mean", "nat_wili_mean",
@@ -126,18 +127,48 @@ def _feature_matrix(rows: pd.DataFrame, feature_cols: List[str],
 
 
 def forecast_input_contract(trained: Dict) -> Dict:
-    """Return the saved input contract, or a conservative fallback audit.
+    """Re-audit saved model features under today's source-readiness rules.
 
-    Fallback re-audits ``demand_claims.feature_cols`` so forecast metadata can
-    still report operational readiness for artifacts trained before the
-    contract was stored.
+    An artifact's stored readiness flag can become stale when source semantics
+    or feature builders change. Both the saved gate and the current gate must
+    pass before a forecast can be called operational.
     """
     saved = trained.get("input_contract")
-    if saved:
-        return saved
     claims = trained.get("demand_claims", {})
     feature_cols = claims.get("feature_cols") or []
-    return summarize_dispositions(feature_cols)
+    current = summarize_dispositions(feature_cols)
+    blend = trained.get("calibrated_blend")
+    calibration_ready = (
+        not blend or (
+            isinstance(blend, dict)
+            and blend.get("calibration_fit_scope") == "prior_feature_years_only"
+            and isinstance(blend.get("calibration_train_end_year"), int)
+            and isinstance(blend.get("calibration_validation_year"), int)
+            and blend["calibration_train_end_year"] < blend["calibration_validation_year"]
+        )
+    )
+    current["calibration_contract_ready"] = calibration_ready
+    current_ready = current["operational_ready"] and calibration_ready
+    current["saved_contract_operational_ready"] = (
+        bool(saved.get("operational_ready")) if isinstance(saved, dict) else None
+    )
+    if not feature_cols:
+        current["operational_ready"] = False
+        current["readiness_reason"] = "missing_trained_feature_columns"
+    elif isinstance(saved, dict) and not saved.get("operational_ready", False) and not current_ready:
+        current["operational_ready"] = False
+        current["readiness_reason"] = "saved_and_current_gates_failed"
+    elif isinstance(saved, dict) and not saved.get("operational_ready", False):
+        current["operational_ready"] = False
+        current["readiness_reason"] = "saved_artifact_failed_operational_gate"
+    elif not calibration_ready:
+        current["operational_ready"] = False
+        current["readiness_reason"] = "unverified_blend_calibration"
+    elif not current_ready:
+        current["readiness_reason"] = "current_source_or_feature_gate_failed"
+    else:
+        current["readiness_reason"] = "ready"
+    return current
 
 
 def _risk_prior(risk_spec: Dict) -> float:
@@ -153,11 +184,15 @@ def build_forecast_grid(
     panel: pd.DataFrame,
     trained: Dict,
     cfg=None,
-    forecast_years: int = 2,
+    forecast_years: int = 1,
     max_rows: int = 10000,
     run_id: Optional[str] = None,
 ) -> pd.DataFrame:
-    """Generate the full forecast schema table from next-period models."""
+    """Generate one-year-ahead rows from next-year annual models."""
+    if forecast_years != 1:
+        raise ValueError("the annual model supports exactly one forecast year")
+    if max_rows < 1:
+        raise ValueError("max_rows must be positive")
     run_id = run_id or f"ar-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     created_at = datetime.now(timezone.utc).isoformat()
 
@@ -167,117 +202,118 @@ def build_forecast_grid(
     demand_model = _restore_demand_model(claims["model"]) if claims.get("model") else None
     cost_model = _restore_demand_model(cost["model"]) if cost.get("model") else None
     risk_model = _restore_risk_model(risk.get("model"))
-    risk_prior = _risk_prior(risk)
     spec = trained.get("encoder_spec", [])
     feature_cols = claims.get("feature_cols") or []
 
     max_year = int(panel["year"].max())
-    last_panel = panel.sort_values("year").groupby(
+    last_panel = panel[panel["year"].eq(max_year)].sort_values("year").groupby(
         ["drug_key", "city"], as_index=False).tail(1)
+    if last_panel.empty:
+        raise ValueError("no city-drug rows exist in the latest panel year")
     last_panel = last_panel.sort_values("demand_claims", ascending=False).reset_index(drop=True)
     ar_total_claims = float(last_panel["demand_claims"].sum()) or 1.0
 
     # Encode every candidate row once; prediction is a pure vector op.
     X_all = _feature_matrix(last_panel, feature_cols, spec)
     ridge_claims_annual = (
-        np.expm1(np.clip(demand_model.predict(X_all), -20.0, 20.0))
-        if demand_model is not None else np.zeros(len(X_all))
+        np.maximum(np.expm1(np.clip(demand_model.predict(X_all), -20.0, 20.0)), 0.0)
+        if demand_model is not None else None
     )
     blend = trained.get("calibrated_blend") or {}
     blend_weight = float(blend.get("blend_weight", 1.0 if demand_model is not None else 0.0))
+    if not np.isfinite(blend_weight) or not 0.0 <= blend_weight <= 1.0:
+        raise ValueError("calibrated blend weight must be between zero and one")
+    if demand_model is None and blend_weight:
+        raise ValueError("calibrated blend requires a demand model")
     last_claims = last_panel["demand_claims"].to_numpy(dtype=float)
-    claims_annual = (1.0 - blend_weight) * last_claims + blend_weight * ridge_claims_annual
+    claims_annual = ((1.0 - blend_weight) * last_claims
+                     + blend_weight * ridge_claims_annual if ridge_claims_annual is not None
+                     else last_claims)
     cost_annual = (np.expm1(np.clip(cost_model.predict(X_all), -20.0, 20.0))
-                   if cost_model is not None else np.zeros(len(X_all)))
+                   if cost_model is not None else None)
     risk_proba = (
         risk_model.predict_proba(X_all)
-        if risk_model is not None
-        else np.full(len(last_panel), risk_prior, dtype=float)
+        if risk_model is not None else None
     )
-    contribs = [
-        _driver_contributions(demand_model, x) if demand_model is not None else {}
+    claims_contribs = [
+        _driver_contributions(demand_model, x)
+        if demand_model is not None and blend_weight > 0 else {}
         for x in X_all
     ]
-    resid_claims = float(demand_model.residual_std) if demand_model else 0.0
+    cost_contribs = [
+        _driver_contributions(cost_model, x) if cost_model is not None else {}
+        for x in X_all
+    ]
 
     rows: List[Dict] = []
-    forecast_dates = [datetime(max_year + y, 1, 1) for y in range(1, forecast_years + 1)]
+    forecast_date = date(max_year + 1, 1, 1)
 
     for i in range(len(last_panel)):
         base = last_panel.iloc[i]
         claims_w = float(claims_annual[i])
-        cost_w = float(cost_annual[i])
+        cost_w = float(max(cost_annual[i], 0.0)) if cost_annual is not None else None
         exposure = float(base["demand_claims"]) / ar_total_claims
-        contrib = contribs[i]
-        supply_risk = float(risk_proba[i])
-
-        for fdate in forecast_dates:
-            for horizon in HORIZONS_DAYS:
-                window_claims = claims_w * (horizon / 365.0)
-                window_cost = cost_w * (horizon / 365.0)
-                ma = float(base.get("demand_claims_ma2", 0.0)) or 0.0
-                shock = (window_claims - ma) / max(ma, 1.0) if ma > 0 else 0.0
-                shortage_impact = exposure * supply_risk
-
-                # Intervals on the model's log scale for demand targets.
-                resid = resid_claims * (horizon / 365.0)
-                targets = {
-                    "demand_claims": window_claims,
-                    "demand_cost": window_cost,
-                    "demand_shock_index": shock,
-                    "supply_disruption_risk": supply_risk,
-                    "arkansas_shortage_impact": shortage_impact,
-                }
-                for target, prediction in targets.items():
-                    low = float(prediction) - 1.96 * resid
-                    high = float(prediction) + 1.96 * resid
-                    if target == "supply_disruption_risk":
-                        low, high = max(0.0, low), min(1.0, high)
-                    for driver in sorted(DRIVER_FEATURES):
-                        row: Dict = {
-                            "forecast_run_id": run_id,
-                            "forecast_created_at": created_at,
-                            "forecast_date": fdate.date().isoformat(),
-                            "horizon_days": horizon,
-                            "geography_level": GEOGRAPHY_LEVEL,
-                            "geography_id": str(base["city"]),
-                            "geography_name": str(base["city"]),
-                            "drug_key": str(base["drug_key"]),
-                            "drug_name": str(base["drug"]),
-                            "ingredient_key": str(base.get("ingredient", "")),
-                            "ingredient_name": str(base.get("ingredient", "")),
-                            "supplier_key": str(base.get("labeler", "")),
-                            "supplier_name": str(base.get("labeler", "")),
-                            "disease_key": driver,
-                            "disease_name": driver,
-                            "target": target,
-                            "prediction": float(prediction),
-                            "prediction_interval_low": low,
-                            "prediction_interval_high": high,
-                            "risk_score": float(
-                                supply_risk if target in (
-                                    "supply_disruption_risk", "arkansas_shortage_impact",
-                                    "demand_shock_index") else prediction),
-                            "model_family": (
-                                ("validated_convex_blend"
-                                 if target == "demand_claims" and blend
-                                 else claims.get("family", "ridge_linear"))
-                                if target in ("demand_claims", "demand_cost")
-                                else "risk_exposure_model"),
-                            "driver_summary_json": json.dumps(
-                                {"drivers": contrib,
-                                 "major_driver": max(contrib, key=contrib.get) if contrib else "",
-                                 "model_family": claims.get("family", "")}),
-                            "source_feature_window_start": datetime(max_year, 1, 1).date().isoformat(),
-                            "source_feature_window_end": datetime(max_year, 12, 31).date().isoformat(),
-                        }
-                        rows.append(row)
-                        if len(rows) >= max_rows:
-                            break
-                    if len(rows) >= max_rows:
-                        break
-                if len(rows) >= max_rows:
-                    break
+        supply_risk = float(risk_proba[i]) if risk_proba is not None else None
+        if (not np.isfinite(claims_w) or claims_w < 0
+                or not np.isfinite(exposure) or exposure < 0
+                or (cost_w is not None and not np.isfinite(cost_w))
+                or (supply_risk is not None and (
+                    not np.isfinite(supply_risk) or not 0 <= supply_risk <= 1))):
+            raise ValueError("annual forecast contains an invalid prediction or source value")
+        claim_family = ("persistence_baseline" if blend_weight == 0
+                        else "validated_convex_blend")
+        targets = [
+            ("demand_claims", claims_w, claim_family, claims_contribs[i],
+             "ridge_log_component_only" if blend_weight > 0 else "none"),
+        ]
+        if cost_w is not None:
+            targets.append(("demand_cost", cost_w, cost.get("family", "ridge_linear"),
+                            cost_contribs[i], "cost_log_model"))
+        ma = pd.to_numeric(base.get("demand_claims_ma2"), errors="coerce")
+        if pd.notna(ma) and np.isfinite(float(ma)) and float(ma) > 0:
+            targets.append(("demand_shock_index", (claims_w - float(ma)) / float(ma),
+                            "derived_annual_change_against_history", {}, "none"))
+        if supply_risk is not None:
+            targets.extend([
+                ("supply_disruption_risk", supply_risk,
+                 risk.get("family", "logistic_ridge"), {}, "none"),
+                ("arkansas_shortage_impact", exposure * supply_risk,
+                 "derived_exposure_risk", {}, "none"),
+            ])
+        for target, prediction, family, contrib, driver_scope in targets:
+            row: Dict = {
+                "forecast_run_id": run_id,
+                "forecast_created_at": created_at,
+                "forecast_date": forecast_date.isoformat(),
+                "horizon_days": ANNUAL_HORIZON_DAYS,
+                "geography_level": GEOGRAPHY_LEVEL,
+                "geography_id": str(base["city"]),
+                "geography_name": str(base["city"]),
+                "drug_key": str(base["drug_key"]),
+                "drug_name": str(base["drug"]),
+                "ingredient_key": str(base.get("ingredient", "")),
+                "ingredient_name": str(base.get("ingredient", "")),
+                "supplier_key": str(base.get("labeler", "")),
+                "supplier_name": str(base.get("labeler", "")),
+                "disease_key": "all_context",
+                "disease_name": "all_context",
+                "target": target,
+                "prediction": float(prediction),
+                "prediction_interval_low": None,
+                "prediction_interval_high": None,
+                "risk_score": supply_risk,
+                "model_family": family,
+                "driver_summary_json": json.dumps({
+                    "drivers": contrib,
+                    "major_driver": max(contrib, key=lambda name: abs(contrib[name]))
+                    if contrib else "",
+                    "scope": driver_scope,
+                    "ridge_blend_weight": blend_weight if target == "demand_claims" else None,
+                }),
+                "source_feature_window_start": date(max_year, 1, 1).isoformat(),
+                "source_feature_window_end": date(max_year, 12, 31).isoformat(),
+            }
+            rows.append(row)
             if len(rows) >= max_rows:
                 break
         if len(rows) >= max_rows:

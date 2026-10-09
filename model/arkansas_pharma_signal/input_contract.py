@@ -108,9 +108,12 @@ _NEAR_REAL_TIME_TOKENS = (
 # stronger freshness contract.
 _LIVE_INPUT_TOKENS = ("nws", "weather_api", "noaa_alert", "openfda_")
 
-# These canonical names are openFDA-backed in the authoritative variable
-# inventory even though their source prefix is normalized away.
-_LIVE_EXACT = frozenset({"shortage_active", "recall_active"})
+# This canonical shortage field is openFDA-backed even when the prefix is
+# normalized away. The enforcement feed does not maintain live recall status.
+_LIVE_EXACT = frozenset({"shortage_active"})
+_UNVERIFIED_RECALL_STATUS = frozenset({
+    "recall_active", "openfda_enforcement_recall_active",
+})
 
 # These names are present in historical WHO-derived artifacts, but the
 # documented FluID endpoint was not verified as a usable public refresh feed.
@@ -151,8 +154,13 @@ def _classify(name: str) -> tuple[str, str]:
             "not a public external feed"
         )
 
+    if n in _UNVERIFIED_RECALL_STATUS:
+        return PERIODIC_TRAINING_ONLY, (
+            "FDA enforcement published status is not maintained as a live recall lifecycle"
+        )
+
     if n in _LIVE_EXACT:
-        return LIVE_INPUT, "canonical openFDA shortage/enforcement feed variable"
+        return LIVE_INPUT, "canonical openFDA shortage feed variable"
 
     if n in _WHO_RESEARCH_ONLY_EXACT:
         return PERIODIC_TRAINING_ONLY, (

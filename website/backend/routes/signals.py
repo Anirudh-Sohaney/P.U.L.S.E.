@@ -108,6 +108,12 @@ def coverage():
     return signal_store.gap_report()
 
 
+@router.get("/coverage/summary")
+def coverage_summary():
+    """Return usable-value coverage for the exact 1,312-ID seed catalog."""
+    return signal_store.seed_coverage_summary()
+
+
 @router.get("/demand/drugs")
 def demand_drugs(search: str = Query("", max_length=120), limit: int = Query(100, ge=1, le=250),
                  offset: int = Query(0, ge=0)):
@@ -128,7 +134,7 @@ def recent_public_signals(days: int = Query(3, ge=1, le=7),
                           limit: int = Query(12, ge=1, le=20)):
     rows = signal_store.recent_public_signals(days=days, limit=limit)
     return {"signals": rows, "count": len(rows), "window_days": days,
-            "note": "These are newly recorded official observations with unresolved same-revision conflicts omitted. Their observation periods may be older than the recording date; they are context, not drug-demand forecasts."}
+            "note": "These are recent source releases and transparent source-derived surveillance measures with unresolved same-revision conflicts omitted. Their observation periods may be older than the recording date; they are context, not drug-demand forecasts. Wastewater values are unweighted reporting-site means, not official geographic medians; inspect their contributing-site counts."}
 
 
 @router.get("/sources/shortages/recent")

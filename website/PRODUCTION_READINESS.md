@@ -62,17 +62,24 @@ Recalls, and Press RSS feeds provide official drug-event context. The Recalls
 and Press adapters keep drug-related items from broader FDA feeds. Each news feed has its own
 schedule and failure status, so a failed GDELT retry does not delay the FDA
 feeds. `--once` forces every adapter to run.
-The GDELT adapter retries transient connection failures and HTTP 5xx responses
-up to three times with short backoff. It does not immediately retry HTTP 429;
+The GDELT and FDA RSS adapters retry transient connection failures and HTTP
+5xx responses up to three times with short backoff. They do not immediately
+retry HTTP 429;
 the worker waits at least 24 hours before retrying a GDELT 429. When a 429
 includes `Retry-After`, its UTC retry deadline is recorded with that refresh
 failure and the worker waits until both that deadline and the 24-hour minimum
-cooldown have passed. Other source failures keep the six-hour cooldown. FDA
+cooldown have passed. A transient DNS lookup failure gets a 30-minute retry
+delay; other source failures keep the six-hour cooldown. FDA
 successes remain visible even when GDELT is rate limited.
-It checks for failed sources hourly and retries them after six hours; the
+It checks for failed sources every 15 minutes; the
 unregistered BLS adapter waits until the next daily schedule so a partial
 failure cannot exhaust its 25-query daily allowance.
-Its hourly wait checks wall-clock time at least once a minute, so a laptop
+When a qualifying article version from the current or preceding UTC month is
+captured after the 20-signal shadow job last succeeded, the worker schedules
+another model run at its next 15-minute check. New article evidence also
+releases that job's otherwise daily failure cooldown; unchanged evidence
+does not cause repeated inference.
+Its wait checks wall-clock time at least once a minute, so a laptop
 resume triggers a missed-schedule check promptly. Sleep still interrupts
 refreshes while the laptop is off.
 The refresh worker holds an exclusive OS lock at
@@ -82,7 +89,7 @@ source, including when a systemd and Compose worker are started together.
 The lock is released by the OS if the process crashes. Run workers only on a
 shared mount with reliable file-lock semantics.
 If the CMS source check succeeds after an earlier baseline run in the same
-daily window, the worker schedules the baseline again at its next hourly check
+daily window, the worker schedules the baseline again at its next 15-minute check
 so the ranking uses the newly committed source generation.
 Run the frontend from `website/frontend/` with
 `npm install` and `npm run dev`. The API is at `http://localhost:8000`; the
@@ -92,6 +99,10 @@ period dates, finite values, timezone-aware ingestion/source timestamps, and
 the exact stored fields of all 4,097 rows from the SHA-256-pinned historical
 catalog. Existing blank historical source URLs are filled from that source
 file; changed nonblank provenance or numeric values fail the audit.
+For FluView, NNDSS, and WVAL rows, the audit also checks Saturday observation
+periods, source release times, allowed geography/metric identities, units,
+source URLs, reporting-site counts where applicable, and recomputed row hashes
+before the API starts.
 Blank source times are permitted only for historical catalog and news-bridge
 rows whose publication time is unknown. `website/catalog/` includes the
 1,312-ID manifest and an exact, SHA-256-pinned copy of the 6,484-row
@@ -271,7 +282,10 @@ host file permissions on Linux, so a root-owned `0600` file would be unreadable
 to the unprivileged processes. The API, refresh worker, and backup worker read
 the signing key through `/run/secrets/pulse_signing_key`; only the backup
 worker reads `/run/secrets/pulse_backup_key`. The cloud overlay does not pass
-either value in a container environment variable. Start from `website/` with:
+either value in a container environment variable. The one-shot data-volume
+ownership initializer has no network, a read-only container filesystem, and
+only the `CHOWN` capability; application containers run as the unprivileged
+`pulse` user. Start from `website/` with:
 
 ```bash
 umask 077
@@ -308,6 +322,10 @@ Docker Compose 5.6.0 binary merged the base and cloud files successfully, and
 Caddy 2.11.7 validated the formatted Caddyfile locally. Docker Engine is
 unavailable on this laptop, so the containers and TLS ingress have not been
 run here.
+The backend startup imports the checked-in catalog, materializes previously
+captured NADAC and FDA shortage snapshots into stable source signals, and
+audits the database before opening the API. The materializer is idempotent
+and uses only stored source records.
 Compose probes the refresh worker's database heartbeat every five minutes and
 requires a verified backup after the most recent 04:00 UTC schedule. In the
 cloud overlay, the backup probe also authenticates the encrypted export and
@@ -336,7 +354,7 @@ session cookie.
 The API process is a reader and account server; the worker owns network
 refreshes. This prevents each API replica from running the same scheduled job.
 The `refresh_runs` table records success and failure with UTC timestamps.
-The worker records a heartbeat before and after each hourly source check.
+The worker records a heartbeat before and after each 15-minute source check.
 `/api/v1/signals/freshness` reports whether a heartbeat was recorded within
 two hours and shows each source's last attempt, last success, and latest
 status. It also returns `failed_sources` so a fallback source failure is
@@ -363,7 +381,11 @@ keys:
 | Input | Current adapter | Credential status |
 | --- | --- | --- |
 | General recent news | GDELT DOC API | Public; no key configured. HTTP 429 responses are recorded as source failures; the worker observes `Retry-After` when provided and enforces a 24-hour minimum cooldown. |
-| Drug safety and pharmacy context | FDA Drugs, MedWatch, Recalls, and Press RSS feeds; openFDA shortage API | Public; no key configured. |
+| Drug safety and pharmacy context | FDA Drugs, MedWatch, Recalls, and Press RSS feeds; openFDA shortage and drug-enforcement APIs | Public; no key configured. `OPENFDA_API_KEY` is optional for regular-use rate capacity. |
+| Influenza-like illness context | Delphi FluView ILINet V5 weekly Arkansas ILI, national ILI, and national weighted ILI | Public anonymous access works locally; an optional Delphi API token removes anonymous rate limits. These are surveillance percentages, not demand outputs. |
+| Notifiable disease context | CDC NNDSS provisional weekly table for the six saved model disease labels, with Arkansas and U.S. rows | Public CDC Socrata access works locally without a key. Missing or suppressed metric cells remain absent. The four CDC measures are stored separately and are not yet the saved model's annual features. |
+| Wastewater context | CDC site-level WVAL dataset, aggregated as a transparent reporting-site mean for Arkansas and the U.S. | Public CDC Socrata access works locally without a key. Each value includes its contributing-site count; these means are not CDC's official geographic medians or validated live inputs for the saved demand model. |
+| Archived 20-output news estimate | Local TF-IDF/Ridge shadow model prefers captured titles and summaries for the last closed UTC month, and falls back to a current-month-to-date estimate targeted at month end. Its JSON weights are SHA-256 pinned. Results are stored with `usable: false`; it does not drive the drug ranking or purchasing dashboard. | No key; requires captured article text. |
 | Labor and price context | BLS Public Data API v1; CMS NADAC download | Public; no key configured. The worker currently makes fewer than the documented unregistered BLS daily request budget. |
 | Arkansas public demand and context | CMS Part D catalog/source, CMS Geographic Variation API, Medicaid State Performance API, Arkansas SDUD downloads, and HHS NDC release catalog | Public; no key configured. The Part D source is checksum- and manifest-validated before the daily projection is published. |
 
@@ -371,23 +393,58 @@ The production deployment still needs operator-managed secrets for session
 signing and encrypted backups; those are not upstream API keys. The historic
 `NEWS_API_KEY` in an old `model/prod_pipeline.py` revision was never used by its
 news loader. No NewsAPI integration is configured. The historical
-FLAN-T5-small bridge is data only; its original inference pipeline is not part
-of the worker schedule. Do not add credentials or promote another feed as an
-equivalent model input without versioning and validating that input path.
+FLAN-T5-small bridge is historical data; its original inference pipeline is
+not in this checkout. A locally saved TF-IDF/Ridge model is now packaged as a
+checksum-pinned, non-executable JSON artifact and scheduled as a daily shadow
+job after source refresh. It estimates the same 20 archived outputs from
+captured titles and summaries, preferring the previous closed UTC month and
+falling back to a current-month-to-date estimate targeted at month end when
+the closed month has no captured text. This is not the original model: it was
+fit on ten matched article months, and its live summary-text inputs differ
+from the archived full-text training corpus. Its rows are stored with
+`usable: false`; the 20 news outputs and downstream
+ATC-derived rows remain excluded from operational latest demand until the
+input distribution and chronological promotion checks pass. No key is needed
+for the currently configured public feeds. Do not treat the shadow outputs as
+observed claims or purchase guidance.
+
+Each shadow output now has database provenance in
+`news_model_record_provenance` and `news_model_record_inputs`: the model artifact
+checksum, estimate kind, ordered captured article-version hashes, and an
+article count. The linked versions retain their actual feed names, URLs,
+timestamps, titles, and summaries. A shadow output has no single upstream
+source URL because a run may combine FDA feeds and GDELT. The release audit
+recomputes each output's row hash from that evidence and fails if a link is
+missing or mismatched. Older shadow rows can be linked by rerunning the
+idempotent article-model job when their original captured inputs are present.
+Inference chooses the latest captured version within each feed and article
+URL before selecting the richest available copy of a URL across feeds.
+
+The daily drug-enforcement adapter captures every FDA report in the 30
+inclusive report-date days ending on the API's `last_updated` date. It stores
+the raw source rows and generation links, then emits five source-defined
+signals: report counts for Classes I, II, III, Not Yet Classified, and Total.
+The source update date is the observation period; the retrieval timestamp is
+stored separately. These are counts of published reports, not active recalls,
+Arkansas stockouts, or demand. The legacy `recall_active` seed ID remains
+unusable because its original identity dimensions were collapsed. The new
+counts do not automatically satisfy the older model's `recall_count_*`
+feature contract without a compatible mapping and validation.
 
 All routes are also described at `/docs` and in the frontend API guide.
 
 | Route | Meaning |
 | --- | --- |
-| `GET /api/v1/signals/catalog` | All 1,312 checked-in seed IDs plus stable IDs added for evaluated newer-drug outputs; identity fields, units, source, and last period. Search and pagination are supported. |
+| `GET /api/v1/signals/catalog` | All 1,312 checked-in seed IDs plus stable IDs added for evaluated newer-drug outputs and newly materialized source-grouped signals; identity fields, units, source, and last period. Search and pagination are supported. |
 | `GET /api/v1/signals/catalog/seed` | Exactly the 1,312 checked-in seed definitions and stable IDs. Definitions only; query `/latest` or `/history` for recorded values. |
-| `POST /api/v1/signals/latest` | Latest usable recorded observations in `values` for up to 1,500 IDs, including the full current catalog in one call. `latest_recorded_values` contains the absolute latest stored row for every requested ID with a record, including unvalidated rows flagged `usable: false`. For IDs without a usable value, `unusable_recorded_values` highlights that archived row; `missing_ids` and `missing_details` report the usable-value gap. Unknown IDs have no recorded row. Date filters are rejected; unresolved same-revision conflicts carry `ambiguous: true` and are excluded from usable values. |
+| `POST /api/v1/signals/latest` | Latest usable recorded observations in `values` for up to 1,500 IDs per request. Page through `/catalog` and batch IDs when retrieving the larger full catalog. `latest_recorded_values` contains the absolute latest stored row for every requested ID with a record, including unvalidated rows flagged `usable: false`. For IDs without a usable value, `unusable_recorded_values` highlights that archived row; `missing_ids` and `missing_details` report the usable-value gap. Unknown IDs have no recorded row. Date filters are rejected; unresolved same-revision conflicts carry `ambiguous: true` and are excluded from usable values. |
 | `POST /api/v1/signals/history` | Recorded values for up to 100 IDs on an exact `date` or any `start_date`/`end_date` range, including the full available 2013–present history. The newest source revision for each period is returned by default; `include_revisions: true` returns each recorded revision for point-in-time training. Missing dates are absent. A request exceeding 10,000 raw source rows returns HTTP 413 with no truncated result; split IDs or dates. Browser training retries smaller ID batches automatically. |
 | `GET /api/v1/signals/freshness` | Catalog counts, latest periods, and last worker run. |
 | `GET /api/v1/signals/coverage` | Per-ID gap status and age of the latest observation. |
-| `GET /api/v1/signals/recent` | Newly recorded official external observations in the last 1–7 days, with both source period and recording timestamp. Unresolved same-revision conflicts are omitted; inspect `/history` for them. |
+| `GET /api/v1/signals/coverage/summary` | Exact 1,312-seed counts for usable recorded values, recent source observations, current-target demand projections, older usable values, and unavailable values. Recent source periods use 14 days for weekly, 60 days for monthly, and 400 days for annual observations; a demand output must target the current year or later. A current-target projection can use an older source period. This display policy is not an upstream completeness claim. |
+| `GET /api/v1/signals/recent` | Public source context recorded in the last 1–7 days, with each true observation period, source update time, and recording time. The FDA enforcement total appears only when its source period is inside that window. Selected Arkansas FluView ILI, NNDSS current-week cases, and WVAL reporting-site means appear only for source periods within 14 days and source updates within the requested window. WVAL rows expose contributing-site counts in `data_quality` and are not official CDC medians. Unresolved same-revision conflicts are omitted; inspect `/history` for them. |
 | `GET /api/v1/signals/demand/drugs` | Searchable, paged ranking of the evaluated Arkansas CMS Part D claims baseline. Until a baseline run succeeds, the endpoint returns an explicit unavailable status instead of promoting unvalidated legacy outputs. |
-| `GET /api/v1/signals/news/recent` | Recorded news or FDA feed updates from the requested recent window. Each row includes `timestamp_kind`: `gdelt_first_seen` or `rss_pub_date`. The legacy `published_at` field holds that source timestamp; it is not always the publisher's publication time. `source_checks` reports each feed's latest attempt and success separately, including failures when fallback items are present. |
+| `GET /api/v1/signals/news/recent` | Recorded news or FDA feed updates from the requested recent window. Headlines come from immutable article versions used by the 20-signal shadow job, deduplicated by URL; older legacy headline rows are retained when no version exists. Each row includes `timestamp_kind`: `gdelt_first_seen` or `rss_pub_date`. The legacy `published_at` field holds that source timestamp; it is not always the publisher's publication time. `source_checks` reports each feed's latest attempt and success separately, including failures when fallback items are present. |
 | `GET /api/v1/signals/sources/shortages/recent` | Recent changes in the latest complete openFDA shortage fetch, with its UTC snapshot date and retrieval time. Supply context, not demand. |
 | `GET /api/v1/signals/sources/nadac/latest` | Latest official NADAC rate snapshot grouped by rate classification and pricing unit. Price context, not demand. |
 | `GET /api/v1/signals/sources/sdud/latest` | Latest Arkansas Medicaid quarterly prescription counts by product name. Suppressed NDC rows remain unknown, so reported totals are lower bounds. Search and pagination are supported. |
@@ -414,7 +471,7 @@ audited. The signal store's current schema migration retains the older
 `signal_observations` table for that reason. A fresh verified database backup
 was taken before setting the migration versions on the live service.
 
-## Current coverage, as of 2026-10-03
+## Current coverage, as of 2026-10-09
 
 The imported historical file has 1,312 distinct signal identities and 4,097
 distinct retained source rows. It ends in 2025 for weekly/monthly observations
@@ -480,6 +537,12 @@ The two event-derived FDA IDs need identity repair before live publication:
 `recall_active` has 92 such dates. Their current national IDs collapse
 different event rows into one identity, so a single current value is not
 well-defined. The API preserves and flags those conflicts.
+The worker now writes additional `fda_shortage_status_current` identities at
+the exact source generic-name grain. Each dated value is 1 when any FDA-listed
+presentation for that name is `Current`, or 0 when its listed presentations
+are all `Resolved` or `To Be Discontinued`. An absent source record remains
+unknown. This is FDA listing context, not Arkansas inventory or demand, and
+does not make the collapsed legacy `shortage_active` ID usable.
 The four NADAC catalog IDs also collapse their original rate-classification
 and pricing-unit dimensions. The January 2023 rows mix prices per each and
 per millilitre. The daily worker now records the official 2026 NADAC snapshot
@@ -598,17 +661,64 @@ The broader model research suite is not yet green: some tests still expect
 proxy promotions that the checked-in metric audit now rejects, and many
 research inputs remain unhydrated Git LFS pointers. Those tests and artifacts
 need source-backed reconciliation before they can serve as a release gate.
-The referenced `existing_models/news_signal_model` directory is absent, and
-`model/artifacts/trained/` contains no files. A repository-wide search on
-2026-10-05 included hidden and ignored files, model and data subtrees, Git LFS
-paths, every reachable commit, and three recovered checkpoint commits reported
-by `git fsck --no-reflogs --unreachable`. It found a dated 97-row, 20-column
-news output CSV and completion metadata in `6d13c14`, plus a recovery README
-in `d6ca4b7` explicitly stating that the original inference code, weights,
-and validation artifacts were absent. The current `news_signals.py` is a
-separate article-event feature layer; it does not generate those 20 named
-news-model columns. Restoring the historical files would therefore recover
-old observations, not a runnable daily generator.
+**Current model inventory (2026-10-09):** the main model package is present at
+`model/arkansas_pharma_signal/`, and a locally trained artifact is present at
+`model/artifacts/trained/models.json`. It was trained in operational feature
+mode against a 544,070-row panel covering 2013–2024. The artifact's own
+input contract is not operationally ready: 56 near-real-time variables still
+lack ready adapters, so the normal `forecast` command fails closed. The API
+worker does not load this artifact today. The generated `model/artifacts/`
+directory is ignored by Git, so this local trained file is not a portable or
+versioned deployment artifact.
+The model forecast commands now recompute source and feature readiness from
+the artifact's trained feature list, require both that current audit and any
+saved artifact gate to pass, and fail closed if the feature list is missing.
+The 2026-10-09 retrain also corrected a label-leaking blend calibration in the
+annual training command. A ridge model fit on all rows had been used to select
+the validation blend weight. With a prior-years-only fit and identity encoder,
+the held-out 2023 feature-year weight changed from 0.70 to 0.00 and validation
+WAPE from the invalid 0.14609 to 0.14846. The corrected artifact remains
+unpublishable because 56 source features are still unready. The standard
+forecast command now requires a training-panel SHA-256 match and a saved
+leakage-safe blend declaration as well as the source-readiness gate.
+The annual forecast writer was also narrowed to its trained one-year horizon.
+It now emits one `all_context` row per available city/drug target rather than
+repeating identical predictions under disease names, leaves unsupported
+intervals null, and omits shortage-risk outputs when no fitted risk model
+exists. Its claims driver list is empty for the current zero-weight ridge
+blend. This writer is still separate from the public API worker.
+
+The saved artifact's 56 pending variables group into six source families.
+These are the inputs that would need compatible, point-in-time feature
+adapters before activating that annual city/drug model; the listed public
+endpoints do not by themselves prove feature equivalence or model readiness.
+
+| Pending feature family | Variables | Historical source or candidate API | Current integration gap |
+| --- | ---: | --- | --- |
+| FluView ILI | 4 | Delphi Epidata FluView ILINet V5 (`source=fluview_ilinet`) | The worker records three source-published Arkansas/national weekly series through 2026-10-03, with release times. A separate point-in-time bridge now computes complete-calendar-year candidates from captured rows and rejects partial years; it does not feed the saved model. The saved national annual builder groups by `issue` year: its 2024 rows actually cover epidemiological weeks 2022-40 through 2023-39. Live V5 observation-year means are therefore not drop-in equivalents and require model retraining. The fourth saved feature, `ar_wili_mean`, used a legacy state `wili` column copied from unweighted ILI; V5 does not publish state weighted ILI. The separate Arkansas annual source file is currently an unhydrated Git LFS pointer. |
+| NNDSS disease reports | 12 | CDC NNDSS Weekly Data (`x9gk-5huc`) | The worker now stores the four numeric CDC fields separately for six exact disease labels and two geographies, retaining row update timestamps and missing cells. The first capture wrote 6,921 observations across 48 source-native IDs through MMWR week ending 2026-10-03. The saved model's annual feature builder takes a maximum across four unlike measures; a reviewed point-in-time replacement and retraining are still required. Arkansas source rows in this feed start in 2025. |
+| Wastewater | 6 | CDC Wastewater Viral Activity Level (`atcp-73re`) | The worker now records six weekly unweighted reporting-site means and contributing site counts through 2026-10-03; the latest Arkansas means each have one site. These are not CDC's official state/national medians. CDC revised its WVAL method in August 2026 and recalibrated history, after the saved research file was captured, so the annual model features need source-compatible rebuilding and revalidation. |
+| FDA shortage | 8 | openFDA drug shortages | Raw daily snapshots exist; the model's annual reason, event, and labeler features are not reconstructed or validated. |
+| FDA enforcement/recall | 15 | openFDA drug enforcement | Complete dated 30-day report counts now exist. They do not equal the saved model's full-year, drug/labeler, keyword, and class features. Published status does not establish `recall_active`. |
+| News article counts | 11 | FDA RSS plus GDELT DOC | Live FDA titles/summaries exist, but GDELT is currently rate limited and the historical corpus/keyword feature contract has no validated live equivalent. |
+
+The candidate public feeds above do not require a mandatory API key in the
+current configuration. `OPENFDA_API_KEY` can be supplied for regular FDA API
+use. The local model artifact must also be packaged with a pinned checksum
+and reevaluated after the feature builders and live data contract are fixed.
+
+The separate historical `existing_models/news_signal_model` directory is
+absent from the checkout. The original FLAN-T5 inference runner and matching
+checkpoint for the dated 20-column news output have not been recovered. The
+repository-wide search on 2026-10-05 examined hidden and ignored files, model
+and data subtrees, Git LFS paths, reachable commits, and three recovered
+checkpoint commits reported by `git fsck --no-reflogs --unreachable`. It
+found a dated 97-row, 20-column news output CSV and completion metadata in
+`6d13c14`, plus a recovery README in `d6ca4b7` explicitly stating that the
+original inference code, weights, and validation artifacts were absent. The
+current `news_signals.py` is a separate article-event feature layer; it does
+not generate those 20 named news-model columns. The later local Ridge shadow
+artifact is also a distinct replacement, not that historical generator.
 The available GDELT article research corpus has 354 retained articles from
 2023–2025, including 292 full-text rows, while the saved news signal table
 contains 97 monthly observations from 2018–2026. That sampled corpus is not
@@ -616,10 +726,13 @@ the original monthly extraction input and cannot reproduce or validate its
 20 outputs by itself. A replacement needs its own dated acquisition contract,
 article-level category labels or other independent validation, and a measured
 chronological evaluation before publication under a new model version.
-Completing the requested daily
-model therefore still requires a reproducible news-model runner and its
-trained artifact, compatible current ATC inputs or an explicitly evaluated
-new target, and chronological validation of the resulting daily pipeline.
+The primary Arkansas model code and a local trained model are therefore
+available, but they are not yet a live API model: the near-real-time input
+adapters and operational contract must be completed before publication. The
+exact historical article-to-20-signal generator remains a separate unresolved
+component. A replacement must use a versioned acquisition contract and pass
+chronological validation before its outputs can be published as usable signal
+values.
 To repeat the audit without replacing checked-in evidence:
 
 ```bash
@@ -657,15 +770,22 @@ retains prior horizons. The current database therefore has 1,424 signal
 definitions, including all 1,312 seed IDs and 1,324 uniquely identified drug
 outputs.
 This baseline does not clear the universal model audit or provide a daily
-news-conditioned drug forecast. The historical downstream runner fits offline;
-its missing upstream 20-feature inference path still prevents live use.
+news-conditioned drug forecast. The new local 20-output Ridge runner can emit
+shadow estimates from captured article text, but the original FLAN-T5 output
+path remains absent and the downstream historical ATC fit is not promoted.
+When a closed month has no captured text, the runner can now record a
+month-to-date estimate targeted at that month's end. Those target-period rows
+remain explicitly unusable and must not be treated as observations.
 
 ## Live inputs and keys
 
 | Input | Current implementation | Credential needed |
 | --- | --- | --- |
-| [openFDA drug shortages](https://open.fda.gov/apis/drug/drugshortages/how-to-use-the-endpoint/) | Daily full snapshot, source `last_updated`, raw record JSON, record change dates, and an immutable membership list for each successful fetch. The latest API view reads one complete fetch even when the source changes twice on the same UTC day. It does not refresh a model signal. | A free `OPENFDA_API_KEY` is recommended for sustained deployment; the local two-page daily pull works without a key under [openFDA's lower unauthenticated limits](https://open.fda.gov/apis/authentication/). |
+| [openFDA drug shortages](https://open.fda.gov/apis/drug/drugshortages/how-to-use-the-endpoint/) | Daily full snapshot, source `last_updated`, raw record JSON, record change dates, and an immutable membership list for each successful fetch. Pages are sorted by package NDC; changed revision/count, unstable page boundaries, and incomplete fetches fail closed. Exact duplicate source payloads are counted and stored once. The latest API view reads one complete fetch even when the source changes twice on the same UTC day. The worker also writes dated generic-name `Current` status indicators with stable IDs; the aggregate seed ID remains unusable. | A free `OPENFDA_API_KEY` is recommended for sustained deployment; the local two-page daily pull works without a key under [openFDA's lower unauthenticated limits](https://open.fda.gov/apis/authentication/). |
 | [GDELT DOC 2.0](https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/) | Daily recent article metadata, title relevance, and GDELT `seendate` (first seen by the feed; publisher publication time is not verified). The worker catches up at most 90 days in three-day windows, splits result-capped windows, and waits 10 seconds between follow-up requests (64-request hard limit). GDELT documents a rolling three-month search limit and warns that its DOC API is rate limited; this conservative delay has not yet been verified against a successful catch-up. HTTP 429 retry deadlines persist across schedule boundaries; without a valid header, the retry waits at least 24 hours. | No key for the DOC API, but outbound access to `api.gdeltproject.org` is needed. |
+| [Delphi FluView ILINet V5](https://cmu-delphi.github.io/delphi-epidata/api/v5-signals/fluview_ilinet.html) | Daily complete source snapshot for Arkansas ILI, national ILI, and national weighted ILI. The backend records each Saturday observation with Delphi's release timestamp and retains revised values. The first capture wrote 3,673 dated source rows across three stable IDs, through 2026-10-03. State weighted ILI is absent from V5 and is not fabricated. These weekly surveillance inputs are not yet transformed into the saved annual model feature contract. | Anonymous public access works locally; an optional Delphi API token removes anonymous rate limits. |
+| [CDC NNDSS Weekly Data](https://data.cdc.gov/NNDSS/NNDSS-Weekly-Data/x9gk-5huc) | Daily complete query for six saved disease labels across Arkansas and both historical U.S. resident labels. Current-week cases, previous-52-week maximum, current-year cumulative, and prior-year cumulative counts remain separate stable IDs. CDC's row update time and MMWR week end are retained; missing cells are skipped. Dataset revision metadata is checked before and after pagination. The first capture wrote 6,921 source rows through 2026-10-03. | Public Socrata API, no key required for this local query. |
+| [CDC Wastewater Viral Activity Level](https://data.cdc.gov/Public-Health-Surveillance/CDC-Wastewater-Viral-Activity-Level-for-SARS-CoV-2/atcp-73re) | Daily source-side unweighted mean of numeric site WVAL rows by week and pathogen for Arkansas and all reporting U.S. sites. The six IDs include contributing-site counts in quality metadata; latest Arkansas coverage is one site per pathogen. These computed means match the historical file's aggregation rule but are not CDC's official geographic medians. Capture checks dataset revision before and after both queries and stores only changed mean/count pairs. The first capture wrote 1,323 rows through 2026-10-03. CDC's August 2026 method change prevents assuming numerical continuity with the saved model. | Public Socrata API, no key required for this local query. |
 | [FDA Drugs RSS](https://www.fda.gov/about-fda/contact-fda/subscribe-podcasts-and-news-feeds) | Checked independently each day for recent FDA drug approval, recall, shortage, and safety event titles, even when GDELT fails. A named medicine can qualify without a generic “drug” keyword; generic approval-notification index pages are excluded. A feed update is not necessarily the date a medical event occurred. | No key. |
 | [FDA MedWatch RSS](https://www.fda.gov/safety/medwatch-fda-safety-information-and-adverse-event-reporting-program/medwatch-rss-feed) | Checked independently for drug-keyword safety alerts. Device-only paths and items without drug terms are excluded; an empty three-day window stays empty. The RSS date is the feed item date, not a demand observation. | No key. |
 | [FDA Recalls RSS](https://www.fda.gov/about-fda/contact-fda/subscribe-podcasts-and-news-feeds) | Checked independently for recent drug-related recall notices. Food-only notices are excluded. The RSS date is the feed item date, not a demand observation. | No key. |
@@ -677,7 +797,7 @@ its missing upstream 20-feature inference path still prevents live use.
 | [CMS Part D Geography and Drug](https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/medicare-part-d-prescribers-by-geography-and-drug) | The daily worker checks CMS's `data.json` catalog for published annual CSVs and the latest CSV's `Last-Modified` header for same-URL revisions. It aggregates Arkansas state rows by generic drug and total claims, commits a versioned normalized panel through an atomic manifest pointer, then reruns the evaluated two-year persistence baseline. After an outage it imports every newer published year in order; unpublished years stay absent. As of this check, 2024 remains the latest release. The historical 20-news-feature downstream fit is trainable offline, but its source data ends in 2024 for CMS claims and its upstream live news inference path is absent. | Public download/API, no key required. |
 | [HHS Medicaid Provider Spending by NDC](https://opendata.hhs.gov/datasets/medicaid-provider-spending-ndc/) | Historical local source through 2024-12. The official July 2026 release also describes coverage ending in December 2024; no 2025 or 2026 monthly claim line is inferred. | Public download, no key identified. |
 | [CMS State Drug Utilization Data 2026](https://data.medicaid.gov/dataset/2957a7f9-9a15-453e-9afd-3bbdcbac8fd3) | The worker discovers the latest annual SDUD release from the official Medicaid metastore each day, then captures Arkansas rows by NDC and utilization type. It stores the catalog modification time, retrieval time, and separate content revisions. Suppressed counts remain unknown. On 2026-10-03 only Q1 was published: 22,703 Arkansas rows, 12,264 suppressed. The 1,368,827 reported prescriptions are a lower bound. This is a quarterly statewide Medicaid source, not the monthly pharmacy-provider target of the historical ATC model. | No key for the public data API. |
-| CDC, NOAA, NWS, FEMA, NADAC | Research-package adapters exist, but the 1,312-signal production refresh has not been connected and verified. | Check each official source's current access rules before deployment. |
+| CDC, NOAA, NWS, FEMA | Research-package adapters exist, but the 1,312-signal production refresh has not been connected and verified. | Check each official source's current access rules before deployment. |
 
 Run `python -m scripts.audit_atc_bridge` from `website/` to compare the
 latest stored Arkansas SDUD period with the manifest-verified historical
@@ -715,20 +835,44 @@ failed scheduled sources. The API's `/health` is process liveness, `/ready`
 checks the catalog and database bootstrap, and
 `/api/v1/signals/freshness` exposes per-source state for external monitoring.
 
-On 2026-10-09 UTC, the live API health check returned `healthy` and the refresh
-worker heartbeat was current. The latest GDELT attempt (02:24 UTC) again
-returned HTTP 429; its last successful refresh was 2026-10-06 00:48 UTC. FDA
-Drugs, MedWatch, Recalls, and Press RSS checks succeeded at 02:24 UTC. The
-three-day news endpoint returned four dated FDA Drugs RSS items. The catalog
-contained 1,424 definitions and 20,786 observations, with the newest stored
-observation dated 2026-09-30. The 20 legacy news-model signals remained
-`not_configured`, with their latest archived period at 2026-01-31; no current
-news-model values were generated. Coverage classified 1,324 drug outputs as
+On 2026-10-09 UTC, the live API health check returned `healthy`. The latest
+GDELT attempt (02:24 UTC) returned HTTP 429; its last successful refresh was
+2026-10-06 00:48 UTC. FDA Drugs, MedWatch, Recalls, and Press RSS checks
+succeeded between 18:01 and 18:09 UTC. A month-to-date shadow run at
+18:10 UTC wrote 20 estimates targeted at 2026-10-31 from eight captured
+FDA Drugs and FDA Press articles. The API marks them `usable: false`; the target
+date is not an observed period. The latest archived news output remains
+2026-01-31. After the FluView and NNDSS captures, the API contains
+1,770 definitions and 34,042 observations, plus ten article versions. The
+57 new surveillance IDs contribute 11,917 dated source observations; they
+do not change the fixed 1,312-ID seed catalog. The 44 NADAC group IDs have 88
+dated rows across two official source snapshots, and the 240 FDA shortage
+generic-name IDs have 1,186 dated rows across six UTC snapshot dates. The
+latest FDA capture contains 238 generic-name values for 2026-10-09. Coverage classified
+1,324 drug outputs as
 evaluated two-year baseline projections, 18 ATC outputs as requiring a
 current compatible source and validated rerun, six identities as collapsed,
-and 56 source signals as having a recorded live observation. These counts are
-a point-in-time operational snapshot, not a claim that every upstream source
-is complete through the current date.
+and 56 source signals as having a recorded live observation. Of the 1,312
+seeded IDs, `/api/v1/signals/latest` returned usable values for 1,268; the
+other 44 are explicitly missing from usable output: 20 unvalidated news-model
+shadows, 18 ATC outputs awaiting a compatible rerun, and six identities whose
+catalog dimensions are collapsed. These counts are a point-in-time operational
+snapshot, not a claim that every upstream source is complete through the
+current date. No values were backfilled by interpolation or presented as
+observations to close those gaps.
+
+The six identity gaps are semantic, not merely stale-feed gaps. The four
+NADAC seed metrics are defined with an empty drug entity, while the live
+adapter returns separate groups by `classification_for_rate_setting` and
+`pricing_unit`; merging those groups into one price value would mix unlike
+units. The worker now publishes additional stable signal IDs at each
+classification/unit grain, without changing the 1,312 seed IDs. The original
+four aggregate seed rows remain unusable. The shortage and recall seed
+indicators also have no drug entity, while their source records are
+drug-level. The shortage source now has separate IDs for its exact generic
+names and dated status semantics. The recall source still needs a validated
+entity mapping and event/status definition. Do not make the aggregate seed
+IDs usable by selecting an arbitrary group or drug.
 
 On 2026-10-03, the worker downloaded the official 2024 CMS CSV once to verify
 the previously imported normalized panel before trusting its modification

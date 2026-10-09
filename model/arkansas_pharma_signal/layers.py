@@ -210,7 +210,7 @@ def _recall_class_rows(cfg, rows: List[Dict]) -> None:
 
 
 def build_supply_drug(cfg) -> pd.DataFrame:
-    """Per (year, drug_key) recall-class counts from FDA enforcement."""
+    """Per (year, drug_key) classified recall counts from FDA enforcement."""
     path = cfg.data_path(cfg.fda_enforcement)
     if not path.exists():
         return pd.DataFrame(columns=["year", "drug"])
@@ -222,8 +222,12 @@ def build_supply_drug(cfg) -> pd.DataFrame:
     rows: List[Dict] = []
     levels = {"Class I": "1", "Class II": "2", "Class III": "3"}
     for _, r in enf.iterrows():
+        level = levels.get(str(r["classification"]))
+        if level is None:
+            # FDA can publish reports before assigning a hazard class. An
+            # unclassified report is not evidence of a Class III recall.
+            continue
         for key in _drug_keys_from_description(r["product_description"]):
-            level = levels.get(str(r["classification"]), "3")
             rows.append({"year": int(r["year"]), "drug": key,
                          "variable_id": f"recall_class{level}", "value": 1.0})
     wide = _to_wide_drug(rows)

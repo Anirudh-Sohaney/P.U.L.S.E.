@@ -42,6 +42,23 @@ GDELT_MAX_REQUESTS = 64
 GDELT_REQUEST_INTERVAL_SECONDS = 10
 
 
+def _fda_rss_root(url: str, *, timeout: int) -> ElementTree.Element:
+    """Retry transient FDA feed transport failures without retrying rate limits."""
+    request = Request(url, headers={"User-Agent": "PULSE-public-signal-monitor/1.0"})
+    for attempt in range(3):
+        try:
+            with urlopen(request, timeout=timeout) as response:  # fixed FDA HTTPS URL
+                return ElementTree.fromstring(response.read(2 * 1024 * 1024))
+        except HTTPError as exc:
+            if exc.code < 500 or attempt == 2:
+                raise
+        except (URLError, OSError):
+            if attempt == 2:
+                raise
+        time.sleep(2 ** attempt)
+    raise RuntimeError("FDA RSS retry loop ended without a response")
+
+
 def _evidence_row(row: dict, source_name: str, fetched_at: str) -> tuple:
     """Retain each distinct source-visible article version and first capture time."""
     timestamp_kind = "gdelt_first_seen" if source_name == "gdelt_recent_news" else "rss_pub_date"
@@ -187,9 +204,7 @@ def _effective_cutoff(cutoff: datetime | None) -> datetime:
 def fetch_fda_drug_updates(*, timeout: int = 25,
                            cutoff: datetime | None = None) -> list[dict]:
     """Verified FDA RSS fallback when a general news source is unavailable."""
-    request = Request(FDA_DRUGS_RSS_URL, headers={"User-Agent": "PULSE-public-signal-monitor/1.0"})
-    with urlopen(request, timeout=timeout) as response:  # fixed HTTPS URL
-        root = ElementTree.fromstring(response.read(2 * 1024 * 1024))
+    root = _fda_rss_root(FDA_DRUGS_RSS_URL, timeout=timeout)
     cutoff = _effective_cutoff(cutoff)
     output = []
     for item in root.findall("./channel/item"):
@@ -222,10 +237,7 @@ def fetch_fda_drug_updates(*, timeout: int = 25,
 def fetch_fda_medwatch_updates(*, timeout: int = 25,
                                cutoff: datetime | None = None) -> list[dict]:
     """Drug-related FDA MedWatch safety alerts, excluding device-only notices."""
-    request = Request(FDA_MEDWATCH_RSS_URL, headers={
-        "User-Agent": "PULSE-public-signal-monitor/1.0"})
-    with urlopen(request, timeout=timeout) as response:
-        root = ElementTree.fromstring(response.read(2 * 1024 * 1024))
+    root = _fda_rss_root(FDA_MEDWATCH_RSS_URL, timeout=timeout)
     cutoff = _effective_cutoff(cutoff)
     output = []
     for item in root.findall("./channel/item"):
@@ -260,10 +272,7 @@ def fetch_fda_medwatch_updates(*, timeout: int = 25,
 def fetch_fda_drug_recalls(*, timeout: int = 25,
                            cutoff: datetime | None = None) -> list[dict]:
     """Keep drug-specific announcements from FDA's broader recalls feed."""
-    request = Request(FDA_RECALLS_RSS_URL, headers={
-        "User-Agent": "PULSE-public-signal-monitor/1.0"})
-    with urlopen(request, timeout=timeout) as response:
-        root = ElementTree.fromstring(response.read(2 * 1024 * 1024))
+    root = _fda_rss_root(FDA_RECALLS_RSS_URL, timeout=timeout)
     cutoff = _effective_cutoff(cutoff)
     output = []
     for item in root.findall("./channel/item"):
@@ -299,10 +308,7 @@ def fetch_fda_drug_recalls(*, timeout: int = 25,
 def fetch_fda_drug_press(*, timeout: int = 25,
                          cutoff: datetime | None = None) -> list[dict]:
     """Drug-related FDA press announcements; these are context, not demand data."""
-    request = Request(FDA_PRESS_RSS_URL, headers={
-        "User-Agent": "PULSE-public-signal-monitor/1.0"})
-    with urlopen(request, timeout=timeout) as response:
-        root = ElementTree.fromstring(response.read(2 * 1024 * 1024))
+    root = _fda_rss_root(FDA_PRESS_RSS_URL, timeout=timeout)
     cutoff = _effective_cutoff(cutoff)
     output = []
     for item in root.findall("./channel/item"):

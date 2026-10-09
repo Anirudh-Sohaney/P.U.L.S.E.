@@ -18,26 +18,24 @@ from .config import settings
 from .refresh_public import (refresh_gdelt_news, refresh_fda_drugs_news,
                              refresh_fda_medwatch_news, refresh_fda_recalls_news,
                              refresh_fda_press_news)
-from .refresh_shortages import refresh_shortages
-from .refresh_bls import refresh_bls
-from .refresh_medicaid import refresh_medicaid
-from .refresh_cms_geo import refresh_cms_geo
-from .refresh_nadac import refresh_nadac
-from .refresh_sdud import refresh_sdud
-from .refresh_cms_partd_source import refresh_cms_partd_source
-from .refresh_hhs_ndc_release import refresh_hhs_ndc_release
-from .refresh_demand_baseline import refresh_demand_baseline
+from .refresh_news_model import refresh_news_model
+from .refresh_combined_model import refresh_combined_model
 from .signal_store import connect, initialize, record_worker_heartbeat
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 SCHEDULE_HOUR_UTC = 16
-RETRY_POLL_SECONDS = 60 * 60
+RETRY_POLL_SECONDS = 15 * 60
 RETRY_DELAY = timedelta(hours=6)
+TRANSIENT_DNS_RETRY_DELAY = timedelta(minutes=30)
 GDELT_RATE_LIMIT_RETRY_DELAY = timedelta(hours=24)
+NEWS_MODEL_RETRY_DELAY = timedelta(hours=24)
 RETRY_AFTER_PATTERN = re.compile(r"\[retry_after_until=([^\]]+)\]")
 HTTP_429_PATTERN = re.compile(r"\bHTTP Error 429\b")
+TRANSIENT_DNS_PATTERN = re.compile(
+    r"Temporary failure in name resolution|Name or service not known|"
+    r"getaddrinfo failed", re.IGNORECASE)
 MAX_SLEEP_SLICE_SECONDS = 60
 REFRESH_TASKS: tuple[tuple[Callable[[], dict], tuple[str, ...]], ...] = (
     (refresh_gdelt_news, ("gdelt_recent_news",)),
@@ -45,15 +43,8 @@ REFRESH_TASKS: tuple[tuple[Callable[[], dict], tuple[str, ...]], ...] = (
     (refresh_fda_medwatch_news, ("fda_medwatch_rss",)),
     (refresh_fda_recalls_news, ("fda_recalls_rss",)),
     (refresh_fda_press_news, ("fda_press_rss",)),
-    (refresh_shortages, ("openfda_shortages",)),
-    (refresh_bls, ("bls_public_api_v1",)),
-    (refresh_medicaid, ("medicaid_state_performance_api",)),
-    (refresh_cms_geo, ("cms_geographic_variation_api",)),
-    (refresh_nadac, ("medicaid_nadac_2026_api",)),
-    (refresh_sdud, ("medicaid_sdud_arkansas",)),
-    (refresh_cms_partd_source, ("cms_partd_catalog_source",)),
-    (refresh_hhs_ndc_release, ("hhs_ndc_release_catalog",)),
-    (refresh_demand_baseline, ("cms_partd_two_year_persistence_v2",)),
+    (refresh_news_model, ("article_text_20_signal_shadow_v1",)),
+    (refresh_combined_model, ("combined_demand_signals",)),
 )
 
 
@@ -100,6 +91,8 @@ def due_tasks(now: datetime | None = None) -> list[Callable[[], dict]]:
     initialize()
     current = now or datetime.now(timezone.utc)
     cutoff = most_recent_schedule(current).isoformat()
+    first_this_month = current.date().replace(day=1)
+    first_previous_month = (first_this_month - timedelta(days=1)).replace(day=1)
     with connect() as db:
         successful_at = {row["source_name"]: datetime.fromisoformat(row["last_success"])
                          for row in db.execute("""SELECT source_name,
@@ -117,31 +110,40 @@ def due_tasks(now: datetime | None = None) -> list[Callable[[], dict]]:
                          AND finished_at=(SELECT MAX(latest.finished_at) FROM refresh_runs AS latest
                            WHERE latest.source_name=failed.source_name
                              AND latest.status='failed')""")}
+        news_evidence_row = db.execute("""SELECT MAX(first_observed_at) AS latest_observed_at
+            FROM news_article_versions WHERE source_timestamp >= ?""",
+            (first_previous_month.isoformat(),)).fetchone()
+        latest_news_evidence = (datetime.fromisoformat(news_evidence_row["latest_observed_at"])
+                                if news_evidence_row["latest_observed_at"] else None)
     due = []
     for refresh, names in REFRESH_TASKS:
         last_success = max((successful_at[name] for name in names if name in successful_at),
                            default=None)
         all_sources_succeeded = all(name in successful_at for name in names)
-        source_newer_than_baseline = (refresh is refresh_demand_baseline
-            and last_success is not None
-            and successful_at.get("cms_partd_catalog_source", last_success) > last_success)
-        if all_sources_succeeded and not source_newer_than_baseline:
+        news_evidence_changed = (refresh is refresh_news_model
+            and latest_news_evidence is not None
+            and latest_news_evidence > latest_success_at.get(names[0], datetime.min.replace(
+                tzinfo=timezone.utc)))
+        if all_sources_succeeded and not news_evidence_changed:
             continue
         latest_failure = max((failed_at[name] for name in names if name in failed_at
                               and (name not in latest_success_at
                                    or failed_at[name][0] > latest_success_at[name])),
                              key=lambda item: item[0], default=None)
         if latest_failure is not None:
-            # The unregistered BLS API permits only 25 queries per day. A
-            # partial refresh can already have spent nine, so wait for the
-            # next daily schedule before another attempt.
             failed_time, failure_message = latest_failure
-            if refresh is refresh_bls:
-                continue
             minimum_retry_delay = RETRY_DELAY
+            if TRANSIENT_DNS_PATTERN.search(failure_message):
+                minimum_retry_delay = TRANSIENT_DNS_RETRY_DELAY
             if refresh is refresh_gdelt_news and HTTP_429_PATTERN.search(failure_message):
                 minimum_retry_delay = max(minimum_retry_delay,
                                           GDELT_RATE_LIMIT_RETRY_DELAY)
+            if refresh is refresh_news_model:
+                # A new article version can resolve a missing-text failure.
+                # Otherwise wait until the next daily attempt.
+                minimum_retry_delay = (timedelta(0) if latest_news_evidence is not None
+                    and latest_news_evidence > failed_time else max(
+                        minimum_retry_delay, NEWS_MODEL_RETRY_DELAY))
             if current - failed_time < minimum_retry_delay:
                 continue
             retry_after_match = RETRY_AFTER_PATTERN.search(failure_message)

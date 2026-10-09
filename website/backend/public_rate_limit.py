@@ -39,6 +39,6 @@ class PublicRateLimiter:
 def request_cost(path: str) -> int:
     if path.endswith('/history') or path.endswith('/latest'):
         return 5
-    if path.endswith('/coverage') or path.endswith('/catalog'):
+    if path.endswith('/coverage') or path.endswith('/coverage/summary') or path.endswith('/catalog'):
         return 3
     return 1

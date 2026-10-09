@@ -8,7 +8,7 @@ This README is the entry point to the codebase. The detailed evidence, source ci
 
 ## Rebuilt 20-signal and 1,312-signal demand model
 
-The local replacement workflow lives in [`rebuilt_demand/`](rebuilt_demand/). It is a clean, separately documented path alongside the existing Arkansas research package. It contains a temporal replacement for the archived 20 monthly outputs and a per-drug XGBoost demand model trained against the 1,312 dated catalog signals. The archived article-to-20-signal runner and its weights were not present in the inspected Git history. A separate local GDELT corpus contains 354 articles (292 full-text) across only 10 publication months, which is too sparse to train and validate a dependable article-conditioned model against 97 monthly outputs. The 20-output replacement is therefore explicitly a time-series forecast of the archived outputs; it does not claim to reproduce news understanding.
+The local replacement workflow lives in [`rebuilt_demand/`](rebuilt_demand/). It is a clean, separately documented path alongside the existing Arkansas research package. It contains a temporal replacement for the archived 20 monthly outputs, a small article-text TF-IDF/Ridge fit, and a per-drug XGBoost demand model trained against the 1,312 dated catalog signals. The exact historical FLAN-T5 runner and checkpoint are still absent. The article-text fit has only ten matched publication months and a two-month holdout, so it is packaged to the backend as a quarantined shadow estimate, not a production demand signal. The 20-output temporal replacement remains a separate time-series forecast and does not claim to reproduce news understanding.
 
 | Artifact | Location | Purpose |
 |---|---|---|
@@ -16,6 +16,8 @@ The local replacement workflow lives in [`rebuilt_demand/`](rebuilt_demand/). It
 | Initial 20-output models | `rebuilt_demand/models/initial_20_signals/*.json` | One XGBoost model per archived signal ID. |
 | Next-month 20-signal output | `rebuilt_demand/models/initial_20_signals/next_month_20_signals.csv` | Latest date plus the 20 predicted signal values. |
 | Experimental article model | `rebuilt_demand/train_news_text.py` and `rebuilt_demand/models/initial_20_signals/article_text_model.joblib` | TF-IDF/Ridge text-to-20-signal experiment; exploratory only, with 10 matched months and a 2-month holdout. |
+| Backend-safe article model | `website/catalog/news_text_20_model.json.gz` | Checksum-pinned vocabulary, IDF, and Ridge parameters exported from the local model artifact; the backend loads JSON rather than executable pickle data. |
+| Article model export | `rebuilt_demand/export_news_text_model.py` | Converts the trusted local joblib artifact into the backend's fixed inference contract. |
 | Article experiment results | `rebuilt_demand/article_text_20_signal_metrics.json` and `rebuilt_demand/article_text_20_signal_test_predictions.csv` | Reproducible scores and test predictions for the small article-text experiment. |
 | Selected demand models | `rebuilt_demand/models/demand_*.json` | One XGBoost model per synthetic drug series, using the validation-selected input/configuration. |
 | Selected-model contract | `rebuilt_demand/selected_demand_model.json` | Chosen configuration, dates, feature names, selected signals per drug, and output model location. |
@@ -48,7 +50,9 @@ The prediction command requires the same sales and dated-signal schemas as train
 
 To run the 90-grid validation winner instead, add `--recipe validation-selected`. That candidate is preserved for comparison; it had the lowest validation WAPE but did not beat its matched sales-only model on the final period.
 
-An optional article-text experiment can be rerun with the development extras installed (`python -m pip install -e '.[dev]'` from `model/`) using `python model/rebuilt_demand/train_news_text.py`. It uses article text to predict the archived same-month 20-signal values, so it is a month-end estimation experiment, not an ahead-of-time forecast. Its 10 matched months and two test months are far too few to support production use; it does not replace the temporal model or establish the behavior of the missing historical runner.
+The article-text experiment can be rerun with the development extras installed (`python -m pip install -e '.[dev]'` from `model/`) using `python model/rebuilt_demand/train_news_text.py`, then exported with `python model/rebuilt_demand/export_news_text_model.py --out website/catalog/news_text_20_model.json.gz`. It estimates the archived same-month 20-signal values from month-end text. The website worker prefers captured text from the latest closed UTC month; when that month has no text, it can produce an explicitly tagged month-to-date estimate targeted at the current month end. It is a shadow nowcast, not an observed signal or a purchase forecast. The ten matched months, two test months, and live-vs-training text mismatch are too weak to promote it. All generated records remain unusable for current values and purchasing.
+
+The source-native FluView observations can be summarized as a complete, point-in-time annual candidate with `python -m arkansas_pharma_signal.fluview_point_in_time --database website/data/signals.sqlite3 --year 2025 --as-of 2026-10-09T23:00:00Z` when the model package is on `PYTHONPATH`. The bridge reads only captured Arkansas ILI, U.S. ILI, and U.S. weighted ILI rows, selects the latest revision published and recorded by the cutoff, and withholds all three means unless every Saturday in the requested year is present. Its output explicitly says `model_compatible: false`: the saved model used a different issue-year feature alignment and an unpublished Arkansas weighted-ILI column. This bridge is a building block for corrected retraining, not a forecast runner.
 
 ### Current measured results
 
@@ -131,7 +135,7 @@ The package is deliberately split by data boundary and responsibility. Modules a
 | `input_sources.py`, `live_inputs.py` | Source definitions and explicitly refreshable public inputs, including selected CMS, FDA, and weather feeds. |
 | `news_corpus.py`, `event_extraction.py`, `event_schema.py` | Load available article text and metadata, extract typed events, and retain date/evidence boundaries. |
 | `news_signals.py`, `news_relevance.py`, `text_signals.py`, `expert_news_heads.py`, `learned_event_state.py` | News relevance, disease/event signal construction, text features, and associated experimental/evaluation paths. |
-| `news_only_adapter.py` | Validated bridge for the independent FLAN-T5-small news-only monthly signal table. It has a strict schema boundary and prefixes bridged features with `news_only_`. |
+| `news_only_adapter.py` | Validated bridge for the archived FLAN-T5-small news-only monthly signal table. It has a strict schema boundary and prefixes bridged features with `news_only_`. A separate TF-IDF/Ridge article model is trained and exported under `rebuilt_demand/`; the API runs it only as an unvalidated shadow estimate. |
 | `weekly_health_proxy.py`, `nssp_respiratory.py`, `respnet.py`, `hospital_respiratory.py`, `wastewater_pressure.py`, `regional_wastewater.py`, `overdose_pressure.py` | Disease, respiratory, wastewater, hospital-utilization, and overdose context adapters/evaluators. These are health-pressure proxies, not medication inventory labels. |
 | `historical_weather.py` | Historical weather loading and aggregation with observed coverage retained. |
 | `shortage_pressure.py`, `supplier_shortage.py`, `recall_pressure.py`, `arkansas_exposure.py` | FDA shortage, supplier-event, recall, and Arkansas exposure signals and evaluation. |
@@ -215,7 +219,7 @@ Generated files live under `artifacts/` (unless a command explicitly documents a
 |---|---|---|
 | Main demand panel | `artifacts/panel/panel.csv` and `artifacts/metadata/panel.json` | Joined model-ready historical panel, with build metadata. |
 | Trained models | `artifacts/trained/models.json` plus metadata | Serialized model parameters/contracts used by supported forecast commands. Presence alone does not imply passing forecast gates. |
-| Standard forecast | `artifacts/forecasts/forecast.csv` (name is defined by the CLI implementation) and `artifacts/metadata/forecast.json` | Forecast grid from the standard annual/city-drug path, bounded by the requested row budget. |
+| Standard forecast | `artifacts/forecasts/forecast.csv` (name is defined by the CLI implementation) and `artifacts/metadata/forecast.json` | One-year-ahead annual city/drug research rows from the guarded model, bounded by the requested row budget. Unsupported short horizons and intervals are not emitted. |
 | Quarterly forecast | `artifacts/forecasts/quarterly_forecast.csv` and quarterly metadata | Arkansas Medicaid quarterly demand proxy forecast, optionally refreshed from official CMS SDUD input in memory. |
 | Universal forecast | `artifacts/forecasts/universal_forecast.csv` and `artifacts/metadata/universal_forecast.json` | Filterable county × drug × supplier-oriented output, with unresolved mappings and evidence type explicit. If trained models are unavailable, the implementation may label rows as heuristics rather than trained predictions. |
 | Qualified metric surface | `artifacts/forecasts/qualified_metric_forecasts.csv.gz` | Rows for metrics that passed their metric-level contract; not a blanket pharmacy inventory forecast. |
@@ -223,6 +227,9 @@ Generated files live under `artifacts/` (unless a command explicitly documents a
 | News artifacts | `artifacts/news/` | Historical corpus, Layer 1 news-state features, relevance outputs, and optional validated news-only bridge. These are intermediate features, not final forecasts. |
 | Evaluation | `artifacts/evaluation/` | Point-in-time and rolling metrics, ablations, coverage reports, status reports, external-reference checks, and publishability results. |
 | Other intermediate artifacts | `artifacts/entities/`, `geography/`, `events/`, `suppliers/`, `weather/`, `outcomes/`, `metadata/` | Built mappings, graph, structured events, weather panels, supplier context, county outcomes, and command/run metadata where generated. |
+
+The local annual model was retrained on 2026-10-09 after fixing calibration leakage: the raw-scale ridge blend weight is selected using only a model fitted before the held-out feature year, with identity categories frozen before that year. The corrected 2023 feature-year validation selected a ridge weight of **0.00** and WAPE **0.14846**. The older artifact selected **0.70** and reported **0.14609** after fitting the ridge on the validation labels; that score was not a valid held-out calibration result. The corrected fit is still a research artifact: 56 trained source variables lack compatible live adapters and the source panel is partly backed by unhydrated Git LFS files. The training command records a SHA-256 digest of the complete panel, and the standard forecast command requires that exact panel plus a leakage-safe calibration declaration before proceeding. Neither safeguard promotes the artifact as live-ready.
+The annual forecast writer now emits one row per target/city/drug for the next year only. With the corrected claims blend at weight zero, its claims driver list is empty and the family is labeled persistence. It does not duplicate identical predictions under each disease label, stretch annual claims into short horizons, claim a calibrated interval from a log-scale residual, or substitute a neutral shortage-risk score when no risk model exists. Missing targets and uncalibrated intervals remain absent.
 
 ### Forecast row interpretation
 
@@ -300,14 +307,15 @@ The CLI also includes commands for weather refresh/history, county outcomes, eve
 
 ### Separate news-only model integration
 
-The 20-signal FLAN-T5-small news pipeline is maintained outside this package. When its source output is available, the adapter validates and materializes it as a dated feature bridge. The bridge does not directly forecast pharmacy availability. If it changes, rebuild the bridge and panel and retrain models so the saved feature contract matches:
+The archived 20-signal FLAN-T5-small output is a dated feature bridge, not an inference pipeline. The adapter validates and materializes it for downstream training; it does not directly forecast pharmacy availability. A separately trained TF-IDF/Ridge article-to-20 model and API shadow runner are documented in `docs/NEWS_ONLY_INTEGRATION.md`. If the historical bridge changes, rebuild the bridge and panel and retrain models so the saved feature contract matches:
 
 The historical 20-signal table is bundled at
 `website/catalog/news_only_catalog_features.csv.gz` and runs through January
-2026. The upstream `run_extract.py` and model-specific inference checkpoint
-are absent, so the table supports downstream research but not live news-model
-inference. The web service imports its verified dated values without
-promoting them as current outputs.
+2026. The original upstream `run_extract.py` and FLAN-T5 inference checkpoint
+are absent. The separate local article model can produce shadow estimates,
+but its small training sample and summary-text inputs do not qualify it for
+published demand values. The web service imports historical dated values and
+keeps the new estimates unusable until their model is evaluated for promotion.
 
 ```bash
 PYTHONPATH=model python -m arkansas_pharma_signal.cli --root . build-news-only-features

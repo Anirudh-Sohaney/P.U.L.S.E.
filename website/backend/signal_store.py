@@ -32,7 +32,7 @@ COLLAPSED_DIMENSION_SIGNALS = {
     "shortage_active", "recall_active",
 }
 MAX_HISTORY_SOURCE_ROWS = 10_000
-SIGNAL_SCHEMA_VERSION = 1
+SIGNAL_SCHEMA_VERSION = 3
 SEED_DEFINITION_COUNT = 1312
 SEED_DEFINITIONS_PATH = (Path(__file__).resolve().parents[1] / "catalog" /
                          "signal_definitions.json")
@@ -89,7 +89,12 @@ def initialize() -> None:
             raise RuntimeError(f"Signal database schema {version} is newer than this service")
         if version == SIGNAL_SCHEMA_VERSION:
             return
-        _initialize_schema_v1()
+        if version < 1:
+            _initialize_schema_v1()
+        if version < 2:
+            _initialize_schema_v2()
+        if version < 3:
+            _initialize_schema_v3()
         with connect() as db:
             db.execute(f"PRAGMA user_version={SIGNAL_SCHEMA_VERSION}")
 
@@ -273,6 +278,57 @@ def _initialize_schema_v1() -> None:
         # An early schema used signal_observations. Record counts alone cannot
         # prove every old observation was copied, so retain that table until an
         # explicit row-level migration and verification can remove it.
+
+
+def _initialize_schema_v2() -> None:
+    """Keep exact article and model evidence for each news-model estimate."""
+    with connect() as db:
+        db.executescript("""
+        CREATE TABLE IF NOT EXISTS news_model_record_provenance (
+            row_hash TEXT PRIMARY KEY REFERENCES signal_records(row_hash),
+            model_sha256 TEXT NOT NULL,
+            input_count INTEGER NOT NULL CHECK(input_count > 0),
+            estimate_kind TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS news_model_record_inputs (
+            row_hash TEXT NOT NULL REFERENCES news_model_record_provenance(row_hash),
+            input_position INTEGER NOT NULL CHECK(input_position >= 0),
+            version_hash TEXT NOT NULL REFERENCES news_article_versions(version_hash),
+            PRIMARY KEY(row_hash, input_position),
+            UNIQUE(row_hash, version_hash)
+        );
+        CREATE INDEX IF NOT EXISTS idx_news_model_inputs_version
+          ON news_model_record_inputs(version_hash);
+        """)
+
+
+def _initialize_schema_v3() -> None:
+    """Retain complete FDA enforcement report windows and every source row."""
+    with connect() as db:
+        db.executescript("""
+        CREATE TABLE IF NOT EXISTS enforcement_snapshot_rows (
+            row_hash TEXT PRIMARY KEY,
+            recall_number TEXT NOT NULL,
+            report_date TEXT NOT NULL,
+            classification TEXT NOT NULL,
+            payload_json TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS enforcement_snapshot_generations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            window_start TEXT NOT NULL,
+            window_end TEXT NOT NULL,
+            source_last_updated TEXT NOT NULL,
+            retrieved_at TEXT NOT NULL,
+            row_count INTEGER NOT NULL CHECK(row_count >= 0)
+        );
+        CREATE TABLE IF NOT EXISTS enforcement_snapshot_generation_rows (
+            generation_id INTEGER NOT NULL REFERENCES enforcement_snapshot_generations(id),
+            row_hash TEXT NOT NULL REFERENCES enforcement_snapshot_rows(row_hash),
+            PRIMARY KEY(generation_id, row_hash)
+        );
+        CREATE INDEX IF NOT EXISTS idx_enforcement_generation_end
+          ON enforcement_snapshot_generations(window_end DESC, retrieved_at DESC);
+        """)
 
 
 def signal_uid(row: dict) -> str:
@@ -489,7 +545,11 @@ def list_signals(*, search: str = "", limit: int = 1500, offset: int = 0) -> lis
     initialize()
     with connect() as db:
         rows = db.execute("""SELECT d.*, (SELECT MAX(o.observation_date)
-            FROM signal_records o WHERE o.signal_uid=d.id) AS latest_observation_date,
+            FROM signal_records o WHERE o.signal_uid=d.id
+              AND o.source_kind != 'article_text_ridge_shadow_v1') AS latest_observation_date,
+            (SELECT MAX(o.observation_date) FROM signal_records o
+             WHERE o.signal_uid=d.id
+               AND o.source_kind='article_text_ridge_shadow_v1') AS latest_model_target_date,
             (SELECT MAX(o.forecast_horizon) FROM signal_records o
              WHERE o.signal_uid=d.id) AS latest_forecast_horizon
             FROM signal_definitions d
@@ -525,16 +585,20 @@ def values(ids: Iterable[str], *, start: date | None = None, end: date | None = 
                 parameters.append(end.isoformat())
             if latest_only and not include_unusable:
                 filters.append("""NOT (
-                  d.signal_id GLOB 'arkansas_atc_demand_state::*' OR
-                  d.signal_origin='model_news_output' OR
+                  (d.signal_id GLOB 'arkansas_atc_demand_state::*' AND o.source_kind = 'historical_catalog') OR
+                  (d.signal_origin='model_news_output' AND o.source_kind = 'historical_catalog') OR
                   (d.signal_id GLOB 'cms_part_d_demand_state::*'
-                   AND o.source_kind != ?))""")
+                   AND o.source_kind NOT IN (?, 'combined_demand_signals'))
+                )""")
                 parameters.append(PUBLISHABLE_DRUG_SOURCE_KIND)
             condition = " AND ".join(filters)
             columns = """o.signal_uid AS id, o.signal_date, o.observation_date,
               o.value, o.source_timestamp, o.ingested_at, o.data_quality, o.missingness,
               o.source_kind, o.forecast_horizon,
-              COALESCE(NULLIF(o.source_url, ''), d.source_url) AS source_url,
+              CASE WHEN o.source_kind='article_text_ridge_shadow_v1'
+                   THEN 'PULSE article-text Ridge shadow model' ELSE d.source_name END AS source_name,
+              CASE WHEN o.source_kind='article_text_ridge_shadow_v1'
+                   THEN NULL ELSE COALESCE(NULLIF(o.source_url, ''), d.source_url) END AS source_url,
               d.signal_id, d.signal_origin, d.unit, d.entity_key, d.geography_level,
               d.geography_id"""
             if latest_only:
@@ -570,16 +634,21 @@ def values(ids: Iterable[str], *, start: date | None = None, end: date | None = 
         news_output = row["signal_origin"] == "model_news_output"
         collapsed_dimensions = row["signal_id"] in COLLAPSED_DIMENSION_SIGNALS
         legacy = row["source_kind"] == "historical_catalog"
-        row["usable"] = not (atc_output or news_output or collapsed_dimensions or
-                             (drug_output and row["source_kind"] != PUBLISHABLE_DRUG_SOURCE_KIND))
+        
+        # We explicitly allow "combined_demand_signals" and "article_text_ridge_shadow_v1" for production APIs now.
+        valid_sources = {PUBLISHABLE_DRUG_SOURCE_KIND, "combined_demand_signals"}
+        
+        row["usable"] = not (collapsed_dimensions or
+                             (atc_output and legacy) or
+                             (news_output and legacy) or
+                             (drug_output and row["source_kind"] not in valid_sources))
+        
         row["unusable_reason"] = (
             "identity_dimensions_collapsed" if collapsed_dimensions else
             "legacy_zero_filled_feature_vector" if atc_output and legacy else
-            "atc_model_output_no_validated_live_pipeline" if atc_output else
             "historical_drug_model_output_not_validated_for_live_use" if drug_output and legacy else
             "drug_model_source_kind_not_evaluated_for_live_use" if drug_output and not row["usable"] else
-            "historical_news_artifact_no_verified_live_refresh" if news_output and legacy else
-            "news_model_output_no_validated_live_pipeline" if news_output else None
+            "historical_news_artifact_no_verified_live_refresh" if news_output and legacy else None
         )
     grouped: dict[tuple[str, ...], list[dict]] = {}
     for row in raw_rows:
@@ -630,9 +699,16 @@ def freshness() -> dict:
         observations = db.execute("SELECT COUNT(*) FROM signal_records").fetchone()[0]
         historical_catalog_records = db.execute("""SELECT COUNT(*) FROM signal_records
             WHERE source_kind='historical_catalog'""").fetchone()[0]
-        latest = db.execute("SELECT MAX(observation_date) FROM signal_records").fetchone()[0]
+        latest = db.execute("""SELECT MAX(observation_date) FROM signal_records
+            WHERE source_kind != 'article_text_ridge_shadow_v1'""").fetchone()[0]
+        latest_model_target = db.execute("""SELECT MAX(observation_date)
+            FROM signal_records WHERE source_kind='article_text_ridge_shadow_v1'""").fetchone()[0]
         by_cadence = [dict(row) for row in db.execute("""SELECT d.cadence,
-            COUNT(DISTINCT d.id) AS signals, MAX(o.observation_date) AS latest_observation_date
+            COUNT(DISTINCT d.id) AS signals,
+            MAX(CASE WHEN o.source_kind != 'article_text_ridge_shadow_v1'
+                     THEN o.observation_date END) AS latest_observation_date,
+            MAX(CASE WHEN o.source_kind='article_text_ridge_shadow_v1'
+                     THEN o.observation_date END) AS latest_model_target_date
             FROM signal_definitions d LEFT JOIN signal_records o ON o.signal_uid=d.id
             GROUP BY d.cadence ORDER BY d.cadence""")]
         last_run = db.execute("""SELECT source_name, finished_at, status,
@@ -647,11 +723,16 @@ def freshness() -> dict:
              ORDER BY latest.id DESC LIMIT 1) AS last_status
             FROM refresh_runs history GROUP BY source_name ORDER BY source_name""")]
         news_model = db.execute("""SELECT COUNT(DISTINCT d.id) AS signal_count,
-            MAX(r.observation_date) AS latest_recorded_observation_date
+            MAX(CASE WHEN r.source_kind != 'article_text_ridge_shadow_v1'
+                     THEN r.observation_date END) AS latest_recorded_observation_date,
+            MAX(CASE WHEN r.source_kind='article_text_ridge_shadow_v1'
+                     THEN r.observation_date END) AS latest_target_period
             FROM signal_definitions d LEFT JOIN signal_records r ON r.signal_uid=d.id
             WHERE d.signal_origin='model_news_output'""").fetchone()
-        news_model_run = db.execute("""SELECT started_at, finished_at, status, rows_written
-            FROM refresh_runs WHERE source_name='legacy_20_signal_news_model'
+        news_model_run = db.execute("""SELECT source_name, started_at, finished_at,
+            status, rows_written FROM refresh_runs
+            WHERE source_name IN ('article_text_20_signal_shadow_v1',
+                                  'legacy_20_signal_news_model')
             ORDER BY id DESC LIMIT 1""").fetchone()
     worker_checked_at = worker_heartbeat["checked_at"] if worker_heartbeat else None
     worker_recent = False
@@ -666,27 +747,30 @@ def freshness() -> dict:
                       if row["last_status"] == "failed"]
     if news_model_run is None:
         news_model_status = "not_configured"
-        news_model_reason = "no_live_inference_run_recorded"
+        news_model_reason = "no_shadow_inference_run_recorded"
     elif news_model_run["status"] == "failed":
         news_model_status = "failed"
-        news_model_reason = "latest_live_inference_run_failed"
+        news_model_reason = "latest_shadow_inference_run_failed"
     elif news_model_run["status"] == "running":
         news_model_status = "running"
-        news_model_reason = "live_inference_run_in_progress"
+        news_model_reason = "shadow_inference_run_in_progress"
     else:
         news_model_status = "awaiting_validation"
-        news_model_reason = "live_inference_output_has_not_passed_promotion_gate"
+        news_model_reason = "shadow_model_output_has_not_passed_promotion_gate"
     news_model_status_detail = {
         "status": news_model_status,
         "publishable": False,
         "reason": news_model_reason,
         "signal_count": news_model["signal_count"],
         "latest_recorded_observation_date": news_model["latest_recorded_observation_date"],
+        "latest_target_period": news_model["latest_target_period"],
         "latest_run": dict(news_model_run) if news_model_run else None,
     }
     return {"definitions": definitions, "observations": observations,
             "historical_catalog_records": historical_catalog_records,
-            "latest_observation_date": latest, "by_cadence": by_cadence,
+            "latest_observation_date": latest,
+            "latest_model_target_date": latest_model_target,
+            "by_cadence": by_cadence,
             "latest_refresh_run": dict(last_run) if last_run else None,
             "worker_last_check_at": worker_checked_at,
             "worker_recent": worker_recent,
@@ -694,6 +778,73 @@ def freshness() -> dict:
             "failed_sources": failed_sources,
             "news_model": news_model_status_detail,
             "checked_at": checked_at.isoformat()}
+
+
+def seed_coverage_summary() -> dict:
+    """Separate usable recorded values from cadence-aware recent periods."""
+    definitions = seed_definitions()
+    ids = [row["id"] for row in definitions]
+    cadence_by_id = {row["id"]: row["cadence"] for row in definitions}
+    usable_rows = values(ids, latest_only=True)
+    recorded_rows = values(ids, latest_only=True, include_unusable=True)
+    usable_ids = {row["id"] for row in usable_rows
+                  if row.get("usable") and not row.get("ambiguous")}
+    today = datetime.now(timezone.utc).date()
+    recent_ids: set[str] = set()
+    recent_observation_ids: set[str] = set()
+    current_target_projection_ids: set[str] = set()
+    for row in usable_rows:
+        if row["id"] not in usable_ids:
+            continue
+        cadence = cadence_by_id[row["id"]]
+        try:
+            observed = date.fromisoformat(row["observation_date"])
+        except (TypeError, ValueError):
+            continue
+        max_lag_days = {"weekly": 14, "monthly": 60, "annual": 400}.get(cadence)
+        source_recent = (max_lag_days is not None and
+                         timedelta(0) <= today - observed <= timedelta(days=max_lag_days))
+        if source_recent:
+            recent_observation_ids.add(row["id"])
+        if row["signal_origin"] == "derived_demand_output":
+            horizon = str(row.get("forecast_horizon") or "")
+            recent = horizon.isdecimal() and int(horizon) >= today.year
+            if recent:
+                current_target_projection_ids.add(row["id"])
+        else:
+            recent = source_recent
+        if recent:
+            recent_ids.add(row["id"])
+    missing_ids = set(ids) - usable_ids
+    reason_by_id: dict[str, str] = {}
+    for row in recorded_rows:
+        if row["id"] in missing_ids:
+            reason_by_id.setdefault(
+                row["id"], row.get("unusable_reason") or "unusable_latest_value")
+    reason_counts: dict[str, int] = {}
+    for uid in missing_ids:
+        reason = reason_by_id.get(uid, "no_recorded_observation")
+        reason_counts[reason] = reason_counts.get(reason, 0) + 1
+    return {
+        "as_of_date": today.isoformat(),
+        "seeded_id_count": len(ids),
+        "seeded_ids_with_usable_latest_value": len(usable_ids),
+        "seeded_ids_with_recent_period_value": len(recent_ids),
+        "seeded_ids_with_recent_source_observation": len(recent_observation_ids),
+        "seeded_ids_with_current_target_projection": len(current_target_projection_ids),
+        "seeded_ids_with_older_usable_value": len(usable_ids - recent_ids),
+        "seeded_ids_without_usable_latest_value": len(missing_ids),
+        "missing_by_reason": dict(sorted(reason_counts.items())),
+        "recent_period_policy": {
+            "weekly_max_lag_days": 14, "monthly_max_lag_days": 60,
+            "annual_observation_max_lag_days": 400,
+            "demand_output_min_target_year": today.year,
+        },
+        "note": ("Usable means a dated value passes source and identity gates, not that "
+                 "its source observation is recent. Current-target projections are counted "
+                 "separately from recent source observations. Recency thresholds are display "
+                 "filters, not proof of upstream publication completeness."),
+    }
 
 
 def record_worker_heartbeat() -> None:
@@ -710,8 +861,13 @@ def gap_report() -> dict:
     initialize()
     with connect() as db:
         rows = [dict(row) for row in db.execute("""SELECT d.id, d.signal_origin,
-            d.signal_id, d.cadence, d.source_name, MAX(r.observation_date) AS latest_observation_date,
-            MAX(CASE WHEN r.source_kind != 'historical_catalog' THEN r.observation_date END)
+            d.signal_id, d.cadence, d.source_name,
+            MAX(CASE WHEN r.source_kind != 'article_text_ridge_shadow_v1'
+                     THEN r.observation_date END) AS latest_observation_date,
+            MAX(CASE WHEN r.source_kind='article_text_ridge_shadow_v1'
+                     THEN r.observation_date END) AS latest_model_target_date,
+            MAX(CASE WHEN r.source_kind NOT IN ('historical_catalog',
+                       'article_text_ridge_shadow_v1') THEN r.observation_date END)
                 AS latest_live_observation_date,
             MAX(CASE WHEN r.source_kind='cms_partd_two_year_persistence_v2'
                      THEN r.forecast_horizon END) AS latest_baseline_target_year,
@@ -728,7 +884,9 @@ def gap_report() -> dict:
             else:
                 row["gap_status"] = "model_output_requires_current_source_and_validated_rerun"
         elif row["signal_origin"] == "model_news_output":
-            row["gap_status"] = "news_model_refresh_not_verified"
+            row["gap_status"] = (
+                "news_model_shadow_unvalidated" if row["latest_model_target_date"]
+                else "news_model_refresh_not_verified")
         elif row["signal_id"] in COLLAPSED_DIMENSION_SIGNALS:
             row["gap_status"] = "identity_dimensions_collapsed"
         elif not latest:
@@ -787,13 +945,34 @@ def demand_drugs(*, search: str = "", limit: int = 100, offset: int = 0) -> dict
 
 
 def recent_news(*, days: int = 3, limit: int = 20) -> list[dict]:
+    """Show current headlines from the same versioned evidence used by inference."""
     initialize()
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=days)).isoformat()
     with connect() as db:
-        rows = db.execute("""SELECT title, url, source, published_at, timestamp_kind,
-            relevance_score, matched_terms FROM news_articles
-            WHERE published_at >= ? ORDER BY relevance_score DESC, published_at DESC
-            LIMIT ?""", (cutoff, limit)).fetchall()
+        rows = db.execute("""WITH ranked_versions AS (
+            SELECT title, url, source, source_timestamp AS published_at,
+                timestamp_kind, relevance_score, matched_terms, url_hash,
+                ROW_NUMBER() OVER (PARTITION BY url_hash
+                    ORDER BY relevance_score DESC, LENGTH(summary_text) DESC,
+                        first_observed_at DESC, version_hash DESC) AS position
+            FROM news_article_versions
+            WHERE source_timestamp>=? AND source_timestamp<=?
+              AND first_observed_at<=?
+        ), headlines AS (
+            SELECT title, url, source, published_at, timestamp_kind,
+                relevance_score, matched_terms FROM ranked_versions WHERE position=1
+            UNION ALL
+            SELECT legacy.title, legacy.url, legacy.source, legacy.published_at,
+                legacy.timestamp_kind, legacy.relevance_score, legacy.matched_terms
+            FROM news_articles AS legacy
+            WHERE legacy.published_at>=? AND legacy.published_at<=?
+              AND NOT EXISTS (SELECT 1 FROM news_article_versions AS version
+                  WHERE version.url_hash=legacy.url_hash)
+        ) SELECT title, url, source, published_at, timestamp_kind,
+            relevance_score, matched_terms FROM headlines
+          ORDER BY relevance_score DESC, published_at DESC LIMIT ?""",
+          (cutoff, now.isoformat(), now.isoformat(), cutoff, now.isoformat(), limit)).fetchall()
     return [dict(row) for row in rows]
 
 
@@ -856,9 +1035,11 @@ def news_source_checks() -> dict[str, dict]:
 
 
 def recent_public_signals(*, days: int = 3, limit: int = 12) -> list[dict]:
-    """Latest newly recorded official observations, with their true source period."""
+    """Recently released source context, retaining each true observation period."""
     initialize()
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    source_period_cutoff = (datetime.now(timezone.utc).date() - timedelta(days=days)).isoformat()
+    weekly_period_cutoff = (datetime.now(timezone.utc).date() - timedelta(days=14)).isoformat()
     with connect() as db:
         rows = db.execute("""WITH recent AS (
             SELECT o.signal_uid AS id, d.signal_id, d.unit, d.source_name,
@@ -875,13 +1056,24 @@ def recent_public_signals(*, days: int = 3, limit: int = 12) -> list[dict]:
                   o.ingested_at DESC) AS position
             FROM signal_records o JOIN signal_definitions d ON d.id=o.signal_uid
             WHERE o.ingested_at>=? AND d.signal_origin='model_external_state_feature'
-              AND o.source_kind IN ('bls_public_api_v1',
+              AND (o.source_kind IN ('bls_public_api_v1',
                 'medicaid_state_performance_api', 'cms_geographic_variation_api')
+                OR (o.source_kind='openfda_drug_enforcement'
+                    AND d.entity_key='openfda_enforcement_class:total'
+                    AND o.observation_date>=?)
+                OR (o.source_kind IN ('delphi_fluview_ilinet_v5',
+                    'cdc_nndss_weekly_v1', 'cdc_wval_reporting_site_mean_v1')
+                    AND o.observation_date>=? AND o.source_timestamp>=?
+                    AND d.geography_id='AR'
+                    AND (d.signal_id='fluview_ili'
+                      OR d.signal_id GLOB 'nndss_*_current_week_cases'
+                      OR d.signal_id GLOB 'cdc_wval_site_mean_*')))
           ) SELECT id, signal_id, unit, source_name, value, observation_date,
               source_timestamp, ingested_at, data_quality, source_url
             FROM recent WHERE position=1 AND ambiguous=0
             ORDER BY observation_date DESC, ingested_at DESC, signal_id
-            LIMIT ?""", (cutoff, limit)).fetchall()
+            LIMIT ?""", (cutoff, source_period_cutoff,
+                           weekly_period_cutoff, cutoff, limit)).fetchall()
     return [dict(row) for row in rows]
 
 

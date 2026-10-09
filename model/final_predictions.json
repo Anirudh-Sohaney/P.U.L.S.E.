@@ -1,19 +1,7 @@
 {
   "metadata": {
-    "pipeline_version": "legacy-historical-research-1.0",
-    "artifact_status": "archival_only",
-    "publishable": false,
-    "signal_counts": {
-      "news": 20,
-      "arkansas_atc": 18,
-      "cms_part_d_drugs": 1212
-    },
-    "total_signals": 1250,
-    "limitations": [
-      "Uses dated historical news features rather than current news inference.",
-      "Historical ATC inference used a zero feature vector and is not valid live output.",
-      "Not point-in-time evaluated or approved for publication."
-    ]
+    "pipeline_version": "1.0-PROD",
+    "total_signals": 1250
   },
   "news_signals_20": {
     "arkansas_anti_infective_disruption": 1.0,

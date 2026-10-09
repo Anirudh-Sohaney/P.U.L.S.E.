@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from typing import Iterable
 
+WASTEWATER_MODEL_FEATURES = frozenset(
+    f"ww_{pathogen}_{scope}"
+    for pathogen in ("covid", "flu", "rsv") for scope in ("ar", "nat")
+)
+
 
 # Availability and code integration are intentionally separate. A public URL
 # can be usable in principle while the corresponding refresh adapter is still
@@ -60,7 +65,7 @@ NEAR_REAL_TIME_SOURCE_REGISTRY = {
     },
     **{
         name: {
-            "source_url": "https://cmu-delphi.github.io/delphi-epidata/api/fluview.html",
+            "source_url": "https://cmu-delphi.github.io/delphi-epidata/api/v5-signals/fluview_ilinet.html",
             "source_access": "free_public",
             "cadence": "weekly",
             "publication_lag": "approximately_1_to_2_weeks",
@@ -68,6 +73,25 @@ NEAR_REAL_TIME_SOURCE_REGISTRY = {
             "adapter_status": "implemented",
         }
         for name in ("ili", "num_ili", "wili")
+    },
+    **{
+        name: {
+            "source_url": "https://cmu-delphi.github.io/delphi-epidata/api/v5-signals/fluview_ilinet.html",
+            "source_access": "free_public",
+            "cadence": "weekly_source_to_annual_model_feature",
+            "publication_lag": "weekly_reporting_and_revision_lag",
+            "source_status": "weekly_source_captured_historical_issue_year_mismatch",
+            "adapter_status": "point_in_time_candidate_available_retraining_required",
+        }
+        for name in ("ar_ili_mean", "nat_ili_mean", "nat_wili_mean")
+    },
+    "ar_wili_mean": {
+        "source_url": "https://cmu-delphi.github.io/delphi-epidata/api/v5-signals/fluview_ilinet.html",
+        "source_access": "free_public",
+        "cadence": "weekly_source_to_annual_model_feature",
+        "publication_lag": "weekly_reporting_and_revision_lag",
+        "source_status": "state_weighted_ili_not_published",
+        "adapter_status": "blocked_requires_feature_retraining",
     },
     "respnet_rsv_rate": {
         "source_url": "https://data.cdc.gov/Public-Health-Surveillance/RESP-NET-Rates-and-Clinical-Data/kvib-3txy",
@@ -140,7 +164,7 @@ LIVE_SOURCE_REGISTRY = {
         "cadence": "daily_or_weekly",
         "publication_lag": "continuous_api_updates",
         "source_status": "source_documented",
-        "adapter_status": "implemented",
+        "adapter_status": "blocked_no_live_lifecycle_source",
     },
     "openfda_enforcement": {
         "source_url": "https://open.fda.gov/apis/drug/enforcement/",
@@ -148,7 +172,7 @@ LIVE_SOURCE_REGISTRY = {
         "cadence": "daily_or_weekly",
         "publication_lag": "continuous_api_updates",
         "source_status": "source_documented",
-        "adapter_status": "implemented",
+        "adapter_status": "report_counts_only_not_model_integrated",
     },
     # These normalized training names are derived from openFDA records but do
     # not yet have a tested end-to-end live feature refresh.
@@ -180,6 +204,24 @@ def source_metadata_for_variable(name: str) -> dict:
         return dict(LIVE_SOURCE_REGISTRY["openfda_shortages"])
     if normalized.startswith("openfda_enforcement"):
         return dict(LIVE_SOURCE_REGISTRY["openfda_enforcement"])
+    if normalized.startswith("nndss_") and normalized.endswith(("_ar", "_us")):
+        return {
+            "source_url": "https://data.cdc.gov/NNDSS/NNDSS-Weekly-Data/x9gk-5huc",
+            "source_access": "free_public",
+            "cadence": "weekly_source_to_annual_model_feature",
+            "publication_lag": "provisional_weekly_reporting_and_revision_lag",
+            "source_status": "weekly_source_fields_captured",
+            "adapter_status": "annual_mixed_measure_bridge_pending",
+        }
+    if normalized in WASTEWATER_MODEL_FEATURES:
+        return {
+            "source_url": "https://data.cdc.gov/Public-Health-Surveillance/CDC-Wastewater-Viral-Activity-Level-for-SARS-CoV-2/atcp-73re",
+            "source_access": "free_public",
+            "cadence": "weekly_source_to_annual_model_feature",
+            "publication_lag": "weekly_reporting_and_revision_lag",
+            "source_status": "reporting_site_means_captured",
+            "adapter_status": "annual_bridge_requires_2026_method_revalidation",
+        }
     if normalized in RESEARCH_ONLY_SOURCE_REGISTRY:
         return dict(RESEARCH_ONLY_SOURCE_REGISTRY[normalized])
     return dict(NEAR_REAL_TIME_SOURCE_REGISTRY.get(normalized, {}))

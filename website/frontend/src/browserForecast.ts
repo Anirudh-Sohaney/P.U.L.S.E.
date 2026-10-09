@@ -19,6 +19,26 @@ let sessionCheckRunning = false
 let activeTrainingCancel: (() => void) | null = null
 const LOCK_SIGNAL_KEY = 'pulse-private-lock'
 const IDLE_LOCK_MS = 15 * 60 * 1000
+const CATALOG_PAGE_SIZE = 1500
+
+type CatalogSignal = {
+  id: string
+  latest_observation_date: string | null
+  signal_origin: string
+  signal_id: string
+}
+
+async function loadSignalCatalog(assertWorkspace: () => void): Promise<CatalogSignal[]> {
+  const signals: CatalogSignal[] = []
+  for (let offset = 0; ; offset += CATALOG_PAGE_SIZE) {
+    assertWorkspace()
+    const page = await apiFetch(`/v1/signals/catalog?limit=${CATALOG_PAGE_SIZE}&offset=${offset}`)
+    if (!Array.isArray(page.signals)) throw new Error('Signal catalog response is incomplete')
+    signals.push(...page.signals)
+    if (page.signals.length < CATALOG_PAGE_SIZE) break
+  }
+  return signals
+}
 
 async function loadSignalHistory(ids: string[], startDate: string, endDate: string,
   assertWorkspace: () => void): Promise<unknown[]> {
@@ -150,16 +170,16 @@ export async function trainInBrowser(sales: File, inventory: File, signalYears: 
           let signalRows: unknown[] = []
           if (signalYears > 0) {
             onProgress('Downloading public signal history')
-            const catalog = await apiFetch('/v1/signals/catalog?limit=1500')
+            const catalogSignals = await loadSignalCatalog(assertWorkspace)
             // The trainer discards records outside this observation window and
             // model outputs that have no validated live publication path.
-            const ids: string[] = catalog.signals
-              .filter((row: { latest_observation_date: string | null; signal_origin: string; signal_id: string }) =>
+            const ids: string[] = catalogSignals
+              .filter((row: CatalogSignal) =>
                 row.latest_observation_date !== null &&
                 row.latest_observation_date >= message.window.start_date &&
                 row.signal_origin !== 'model_news_output' &&
                 !row.signal_id.startsWith('arkansas_atc_demand_state::'))
-              .map((row: { id: string }) => row.id)
+              .map((row: CatalogSignal) => row.id)
             for (let index = 0; index < ids.length; index += 100) {
               assertWorkspace()
               const rows = await loadSignalHistory(ids.slice(index, index + 100),

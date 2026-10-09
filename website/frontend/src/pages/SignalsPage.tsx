@@ -7,16 +7,26 @@ type Drug = { id: string | null; drug_name: string; demand_state: number; observ
 type News = { title: string; url: string; source: string; published_at: string; timestamp_kind: 'gdelt_first_seen' | 'rss_pub_date'; relevance_score: number }
 type NewsSourceCheck = { last_status: string; last_attempt_at: string | null; last_success_at: string | null; last_error_code?: string | null; last_error_http_status?: number | null }
 type Shortage = { generic_name: string; status: string; change_date: string; source_last_updated: string; retrieved_at: string }
-type PublicSignal = { id: string; signal_id: string; unit: string | null; source_name: string | null; value: number; observation_date: string; ingested_at: string; data_quality: string | null; source_url: string | null }
+type PublicSignal = { id: string; signal_id: string; unit: string | null; source_name: string | null; value: number; observation_date: string; source_timestamp: string; ingested_at: string; data_quality: string | null; source_url: string | null }
 type RecentItem =
   | { type: 'news'; key: string; timestamp: string; article: News }
   | { type: 'shortage'; key: string; timestamp: string; shortage: Shortage }
   | { type: 'signal'; key: string; timestamp: string; signal: PublicSignal }
 type Market = { drugs: Drug[]; count: number; total: number; filtered_total: number; meaning: string; status?: string; source_year?: number; target_year?: number; state_thresholds_claims?: number[] | null; method?: string; evaluation?: { fold_count: number; mean_balanced_accuracy: number } }
-type Freshness = { definitions: number; latest_observation_date: string | null; checked_at: string; worker_recent: boolean; worker_last_check_at: string | null; failed_sources?: string[]; news_model?: { status: string; publishable: boolean; reason: string; signal_count: number; latest_recorded_observation_date: string | null; latest_run: { started_at: string; finished_at: string | null; status: string; rows_written: number | null } | null } }
+type Freshness = { definitions: number; latest_observation_date: string | null; latest_model_target_date?: string | null; checked_at: string; worker_recent: boolean; worker_last_check_at: string | null; failed_sources?: string[]; news_model?: { status: string; publishable: boolean; reason: string; signal_count: number; latest_recorded_observation_date: string | null; latest_target_period: string | null; latest_run: { source_name?: string; started_at: string; finished_at: string | null; status: string; rows_written: number | null } | null } }
+type SeedCoverage = { as_of_date: string; seeded_id_count: number; seeded_ids_with_usable_latest_value: number; seeded_ids_with_recent_period_value: number; seeded_ids_with_recent_source_observation: number; seeded_ids_with_current_target_projection: number; seeded_ids_with_older_usable_value: number; seeded_ids_without_usable_latest_value: number; missing_by_reason: Record<string, number> }
 type Sdud = { period: string | null; source_rows?: number; suppressed_rows?: number; reported_prescriptions_lower_bound?: number; source_url?: string; last_checked_at?: string }
 
 const stateNames = ['Lowest', 'Low', 'Middle', 'High', 'Highest']
+const missingReasonLabels: Record<string, string> = {
+  news_model_output_no_validated_live_pipeline: 'article-model outputs awaiting validation',
+  atc_model_output_no_validated_live_pipeline: 'ATC outputs awaiting a compatible source and validated rerun',
+  legacy_zero_filled_feature_vector: 'ATC outputs backed only by the legacy zero-filled model',
+  identity_dimensions_collapsed: 'legacy IDs with collapsed units or dimensions',
+  conflicting_latest_revision: 'IDs with conflicting latest revisions',
+  no_recorded_observation: 'IDs with no recorded observation',
+  unusable_latest_value: 'IDs with an unusable latest value',
+}
 const DATA_REFRESH_MS = 5 * 60_000
 const SEARCH_DELAY_MS = 300
 
@@ -30,6 +40,7 @@ export default function SignalsPage() {
   const [shortages, setShortages] = useState<Shortage[]>([])
   const [publicSignals, setPublicSignals] = useState<PublicSignal[]>([])
   const [freshness, setFreshness] = useState<Freshness | null>(null)
+  const [seedCoverage, setSeedCoverage] = useState<SeedCoverage | null>(null)
   const [sdud, setSdud] = useState<Sdud | null>(null)
   const [error, setError] = useState('')
 
@@ -44,11 +55,72 @@ export default function SignalsPage() {
   useEffect(() => {
     let active = true
     let requestNumber = 0
-    const refresh = () => {
+    const refresh = async () => {
       const currentRequest = ++requestNumber
-      apiFetch(`/v1/signals/demand/drugs?search=${encodeURIComponent(committedSearch)}&limit=50&offset=${page * 50}`)
-        .then(drugs => { if (active && currentRequest === requestNumber) { setMarket(drugs); setError('') } })
-        .catch(err => { if (active && currentRequest === requestNumber) { setMarket(null); setError(err instanceof Error ? err.message : 'Could not load drug rankings') } })
+      try {
+        const cat = await apiFetch(`/v1/signals/catalog?search=${encodeURIComponent(committedSearch)}&limit=1500`)
+        if (!active || currentRequest !== requestNumber) return
+        
+        const demandSignals = cat.signals.filter((s: any) => s.signal_origin === 'cms_partd_two_year_persistence_v2')
+        if (demandSignals.length === 0) {
+            setMarket({ drugs: [], count: 0, total: 0, filtered_total: 0, meaning: 'No drugs match this search.' })
+            setError('')
+            return
+        }
+        
+        const ids = demandSignals.map((s: any) => s.id)
+        
+        const batches = []
+        for (let i = 0; i < ids.length; i += 1500) {
+            batches.push(ids.slice(i, i + 1500))
+        }
+        
+        const latestValues = []
+        for (const batch of batches) {
+            const res = await apiFetch('/v1/signals/latest', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: batch })
+            })
+            latestValues.push(...res.values)
+        }
+        
+        if (!active || currentRequest !== requestNumber) return
+        
+        const latestMap = new Map(latestValues.map((v: any) => [v.id, v]))
+        
+        let allDrugs = demandSignals.map((s: any) => {
+            const val = latestMap.get(s.id)
+            return {
+                id: s.id,
+                drug_name: s.entity_key,
+                demand_state: val ? val.value : 0,
+                observed_claims: 0,
+                observation_date: val ? val.observation_date : '',
+                forecast_horizon: val ? String(parseInt(val.observation_date.slice(0, 4)) + 2) : '',
+                state_definition: s.state_definition
+            }
+        })
+        
+        allDrugs.sort((a: any, b: any) => b.demand_state - a.demand_state || a.drug_name.localeCompare(b.drug_name))
+        
+        const filteredTotal = allDrugs.length
+        const pagedDrugs = allDrugs.slice(page * 50, (page + 1) * 50)
+        
+        setMarket({
+            drugs: pagedDrugs,
+            count: pagedDrugs.length,
+            total: cat.count,
+            filtered_total: filteredTotal,
+            meaning: ''
+        })
+        setError('')
+      } catch (err) {
+        if (active && currentRequest === requestNumber) {
+          setMarket(null)
+          setError(err instanceof Error ? err.message : 'Could not load drug rankings')
+        }
+      }
     }
     refresh()
     const timer = window.setInterval(refresh, DATA_REFRESH_MS)
@@ -66,9 +138,10 @@ export default function SignalsPage() {
         apiFetch('/v1/signals/news/recent?days=3'),
         apiFetch('/v1/signals/sources/shortages/recent?days=3'),
         apiFetch('/v1/signals/freshness'),
-        apiFetch('/v1/signals/recent?days=3&limit=4'),
+        apiFetch('/v1/signals/recent?days=3&limit=12'),
         apiFetch('/v1/signals/sources/sdud/latest?limit=1'),
-      ]).then(([recent, shortageChanges, coverage, observations, sdudSnapshot]) => {
+        apiFetch('/v1/signals/coverage/summary'),
+      ]).then(([recent, shortageChanges, coverage, observations, sdudSnapshot, seedSummary]) => {
         if (!active || currentRequest !== requestNumber) return
         setNews(recent.status === 'fulfilled' ? recent.value.articles : [])
         setNewsSources(recent.status === 'fulfilled' ? recent.value.source_checks : null)
@@ -76,6 +149,7 @@ export default function SignalsPage() {
         setFreshness(coverage.status === 'fulfilled' ? coverage.value : null)
         setPublicSignals(observations.status === 'fulfilled' ? observations.value.signals : [])
         setSdud(sdudSnapshot.status === 'fulfilled' ? sdudSnapshot.value : null)
+        setSeedCoverage(seedSummary.status === 'fulfilled' ? seedSummary.value : null)
       })
     }
     refresh()
@@ -111,6 +185,9 @@ export default function SignalsPage() {
         : '; no successful run recorded'
       return `${label}: ${error}${lastSuccess}`
     })
+  const missingCoverage = Object.entries(seedCoverage?.missing_by_reason ?? {})
+    .filter(([, count]) => count > 0)
+    .map(([reason, count]) => `${count} ${missingReasonLabels[reason] ?? reason.replace(/_/g, ' ')}`)
   const recentItems: RecentItem[] = [
     ...news.slice(0, 8).map(article => ({
       type: 'news' as const, key: `news:${article.url}`, timestamp: article.published_at,
@@ -122,7 +199,7 @@ export default function SignalsPage() {
       shortage: item,
     })),
     ...publicSignals.map(signal => ({
-      type: 'signal' as const, key: `signal:${signal.id}`, timestamp: signal.ingested_at,
+      type: 'signal' as const, key: `signal:${signal.id}`, timestamp: signal.source_timestamp,
       signal,
     })),
   ].filter(item => Number.isFinite(Date.parse(item.timestamp)))
@@ -134,10 +211,11 @@ export default function SignalsPage() {
   return <div className="space-y-8">
     <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Public signal library</p><h1 className="mt-3 font-serif text-5xl text-ink">Drug demand signals</h1><p className="mt-4 max-w-3xl text-sm leading-relaxed text-slate-600">Browse the recorded Arkansas CMS Part D demand states and recent pharmacy news. These are public data proxies. A higher state indicates higher relative demand in this model, not a number of prescriptions or units to buy.</p></div>
     {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</p>}
-    <div className="grid gap-4 sm:grid-cols-3"><Metric label="Catalog signals" value={freshness?.definitions ?? '—'} /><Metric label="Drug states" value={market?.total ?? '—'} /><Metric label="Latest catalog period" value={freshness?.latest_observation_date ?? '—'} /></div>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5"><Metric label="Catalog signals" value={freshness?.definitions ?? '—'} /><Metric label="Seed IDs with usable records" value={seedCoverage ? `${seedCoverage.seeded_ids_with_usable_latest_value} / ${seedCoverage.seeded_id_count}` : '—'} /><Metric label="Recent source periods" value={seedCoverage ? `${seedCoverage.seeded_ids_with_recent_source_observation} / ${seedCoverage.seeded_id_count}` : '—'} /><Metric label="Current-target drug projections" value={seedCoverage?.seeded_ids_with_current_target_projection ?? '—'} /><Metric label="Latest catalog period" value={freshness?.latest_observation_date ?? '—'} /></div>
     {freshness && !freshness.worker_recent && <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0" /><p>The public-source refresh worker has not checked in within two hours. Recorded values remain available, but new source updates may be delayed. Last check: {freshness.worker_last_check_at ? new Date(freshness.worker_last_check_at).toLocaleString() : 'none recorded'}.</p></div>}
     {freshness?.failed_sources?.length ? <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0" /><p>Some source adapters failed on their latest attempt: <span className="font-medium">{freshness.failed_sources.join(', ')}</span>. Other verified sources remain available; inspect freshness and source timestamps before interpreting recent context.</p></div> : null}
-    {freshness?.news_model && !freshness.news_model.publishable && freshness.news_model.signal_count > 0 && <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0" /><p>The {freshness.news_model.signal_count}-signal news model is {freshness.news_model.status.replace(/_/g, ' ')} for live publication. Its latest recorded period is {freshness.news_model.latest_recorded_observation_date ?? 'unknown'}. Archived values remain available in history but are excluded from usable latest values until live inference passes validation.</p></div>}
+    {seedCoverage?.seeded_ids_without_usable_latest_value || seedCoverage?.seeded_ids_with_older_usable_value ? <div role="status" className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0" /><p><span className="font-medium">{seedCoverage?.seeded_ids_with_recent_source_observation} of {seedCoverage?.seeded_id_count} seeded IDs have recent source observation periods.</span> {seedCoverage?.seeded_ids_with_current_target_projection} drug projections target the current year or later, but may use older source data. {seedCoverage?.seeded_ids_with_older_usable_value} usable values have older periods or targets. {seedCoverage?.seeded_ids_without_usable_latest_value ? `${seedCoverage.seeded_ids_without_usable_latest_value} have no usable value: ${missingCoverage.join('; ')}.` : ''} Coverage as of {seedCoverage?.as_of_date}.</p></div> : null}
+    {freshness?.news_model && !freshness.news_model.publishable && freshness.news_model.signal_count > 0 && <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0" /><p>The 20-signal article-text model is {freshness.news_model.status.replace(/_/g, ' ')}. It runs as an unvalidated shadow estimate from captured article titles and summaries; if the previous month has no text, it estimates the current month-end from month-to-date articles. Its training set has only ten matched months. Its latest recorded target period is {freshness.news_model.latest_target_period ?? 'none'}; the latest historical output period is {freshness.news_model.latest_recorded_observation_date ?? 'unknown'}. These model estimates are available in history but excluded from usable latest values and purchasing.</p></div>}
     {stale && <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0" /><p>The drug rankings below target {targetYear}. They are historical model outputs and are not current {new Date().getFullYear()} demand estimates. The daily refresh must obtain new source data and run a validated model before current rankings can be published.</p></div>}
     {market?.method && <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0" /><p>These {market.target_year} rankings are two-year projections from {market.source_year} Arkansas Medicare Part D claims. The evaluated persistence baseline achieved {(100 * (market.evaluation?.mean_balanced_accuracy ?? 0)).toFixed(1)}% balanced accuracy across {market.evaluation?.fold_count} chronological holdouts. They are relative claim categories, not current dispensing, inventory, or units to purchase. News above is context and was not used to change these projections.{market.state_thresholds_claims?.length === 4 && <span className="mt-1 block">The five states use historical annual claim-count cutoffs of {market.state_thresholds_claims.map(value => new Intl.NumberFormat().format(value)).join(', ')}. Crossing a cutoff moves a drug into the next higher relative state.</span>}</p></div>}
     {sdud?.period && <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700"><p className="font-medium text-ink">Latest Arkansas Medicaid prescription source: {sdud.period}</p><p className="mt-1">{sdud.suppressed_rows?.toLocaleString()} of {sdud.source_rows?.toLocaleString()} NDC rows have suppressed counts. The {sdud.reported_prescriptions_lower_bound?.toLocaleString()} reported prescriptions are a lower bound, not a complete current demand estimate. This quarterly statewide source has not been used to replace the monthly ATC model outputs.</p>{sdud.source_url && <a className="mt-2 inline-flex items-center gap-1 text-primary-800 underline" href={sdud.source_url} target="_blank" rel="noopener noreferrer">View official source <ArrowUpRight className="h-3 w-3" /></a>}</div>}
@@ -165,14 +243,18 @@ function RecentContextCard({ item }: { item: RecentItem }) {
 }
 
 function PublicSignalCard({ signal }: { signal: PublicSignal }) {
+  const siteCount = Number(signal.data_quality?.match(/contributing_site_rows=(\d+)/)?.[1])
   const value = signal.unit === 'share'
     ? `${(signal.value * 100).toFixed(1)}%`
+    : signal.unit === 'percent_outpatient_visits'
+      ? `${signal.value.toFixed(2)}% of outpatient visits`
     : `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(signal.value)} ${signal.unit?.replace(/_/g, ' ') ?? ''}`
   return <div className="rounded-xl border border-slate-200 p-4">
-    <p className="text-xs text-slate-500">Public observation · recorded {new Date(signal.ingested_at).toLocaleDateString()}</p>
+    <p className="text-xs text-slate-500">Public source context · updated {new Date(signal.source_timestamp).toLocaleDateString()} · recorded {new Date(signal.ingested_at).toLocaleDateString()}</p>
     <h3 className="mt-2 font-medium capitalize text-ink">{signal.signal_id.replace(/_/g, ' ')}</h3>
     <p className="mt-2 text-xl font-semibold text-ink">{value}</p>
     <p className="mt-2 text-xs text-slate-600">Source period: {signal.observation_date} · {signal.source_name ?? 'Official public source'}</p>
+    {Number.isFinite(siteCount) && <p className="mt-2 text-xs text-amber-800">Mean of {siteCount} reporting {siteCount === 1 ? 'site' : 'sites'}; not CDC’s official state median.</p>}
     {signal.source_url && <a className="mt-2 inline-flex items-center gap-1 text-xs text-primary-800 underline" href={signal.source_url} target="_blank" rel="noopener noreferrer">View source <ArrowUpRight className="h-3 w-3" /></a>}
   </div>
 }

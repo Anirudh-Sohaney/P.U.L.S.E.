@@ -1,9 +1,11 @@
 """Adapter for the historical 20-column news-only output.
 
-The original SLM runner and weights are absent from this checkout. This
-adapter reads dated historical output only; it cannot generate live values.
-Annual sums are joined to the multi-model panel at year ``t`` and therefore
-can only inform a ``t+1`` target through chronological training/evaluation.
+This module validates and loads the dated archive; it does not run inference.
+A separate local TF-IDF/Ridge article model and backend shadow runner are
+implemented under ``rebuilt_demand/`` and ``website/backend/``. The historical
+archive remains the training target for that experiment. Annual sums from the
+archive are joined to the multi-model panel at year ``t`` and therefore can
+only inform a ``t+1`` target through chronological training/evaluation.
 """
 
 from __future__ import annotations

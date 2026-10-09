@@ -393,10 +393,9 @@ def fetch_openfda_enforcement(*, endpoint: str = OPENFDA_ENFORCEMENT_URL,
                               timeout: int = 30, page_size: int = 100) -> tuple[pd.DataFrame, dict]:
     """Fetch and normalize paginated FDA drug-enforcement recall records.
 
-    ``recall_active`` is a source-status normalization, not a forecast label:
-    completed/terminated FDA records are inactive and all other reported
-    records remain active until a later source observation says otherwise.
-    The raw status and termination date are retained for auditability.
+    FDA does not maintain the published status as a live lifecycle indicator.
+    Keep the reported status and dates as historical source fields; do not
+    derive an active-recall feature or a current inventory condition from them.
     """
     rows: list[dict] = []
     skip = 0
@@ -424,7 +423,7 @@ def fetch_openfda_enforcement(*, endpoint: str = OPENFDA_ENFORCEMENT_URL,
                 "classification": item.get("classification", ""),
                 "reason_for_recall": item.get("reason_for_recall", ""),
                 "status": status,
-                "recall_active": int(status.lower() not in {"completed", "terminated"}),
+                "report_date": pd.to_datetime(item.get("report_date"), errors="coerce"),
                 "event_date": event_date,
                 "termination_date": pd.to_datetime(
                     item.get("termination_date"), errors="coerce"),
@@ -436,11 +435,13 @@ def fetch_openfda_enforcement(*, endpoint: str = OPENFDA_ENFORCEMENT_URL,
             break
     frame = pd.DataFrame(rows, columns=[
         "recall_number", "supplier", "product_description", "product_ndc",
-        "classification", "reason_for_recall", "status", "recall_active",
+        "classification", "reason_for_recall", "status", "report_date",
         "event_date", "termination_date", "source",
     ])
     metadata = {"source": "openFDA drug enforcement", "endpoint": endpoint,
-                "retrieved_on": date.today().isoformat(), **metadata}
+                "retrieved_on": date.today().isoformat(),
+                "status_semantics": "published_report_status_not_live_lifecycle",
+                **metadata}
     return frame, metadata
 
 

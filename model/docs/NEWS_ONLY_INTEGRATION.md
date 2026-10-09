@@ -15,8 +15,8 @@ path. In the inspected history, `existing_models/news_signal_model/` contains
 only its README, a completion-gate report, and the dated CSV output; its
 inference runner, model-specific acquisition manifest, and row-level
 validation artifacts are not present. Historical values can be queried with
-their recorded dates, but the current daily worker cannot regenerate those
-20 columns. They must not be published as current news-model signals.
+their recorded dates, but the original FLAN-T5 outputs cannot be regenerated
+from this checkout.
 
 The older `existing_models/pharmacy_architecture/` variant is also real model
 code, but it is not that generator: its `UnifiedPharmacyArchitecture` combines
@@ -103,10 +103,28 @@ replacement without more monthly coverage and stronger signal-label
 provenance. The 14-day pharmacy-demand benchmark and its current holdout
 results are documented in `model/comparison.md`.
 
+The GDELT DOC API is not a reliable way to fill the missing article-text
+months by requesting a long article list: GDELT's published update says the
+long historical search window is available for timeline modes, while other
+output modes (including article lists) are restricted to the most recent
+three months of a specified search window. See the [GDELT DOC API update](https://blog.gdeltproject.org/doc-2-0-updates-1-5-year-searching-and-updated-mobile-interface/).
+The GDELT project separately documents historical bulk data and BigQuery
+access, but those contain different records and do not automatically recreate
+the full article text used by the archived model. A backfill therefore needs
+an independently sourced, legally usable article archive with dated text and
+provenance; current-page re-fetches of old URLs are not equivalent training
+evidence.
+
 The rebuild also records an exploratory TF-IDF/Ridge article-to-output fit in
 `model/rebuilt_demand/train_news_text.py`. It scored 11.91% pooled WAPE on its
 last two matched months versus 87.07% for persistence, but only 10 monthly
-examples were available and the text is aggregated through month end. These
-two months do not validate a reliable forward news model; the experiment is
-kept as a reproducible research artifact and is not the production 20-signal
-path.
+examples were available and the text is aggregated through month end. The
+saved fit is exported to `website/catalog/news_text_20_model.json.gz`. The
+worker prefers captured title/summary text for the latest closed month and
+falls back to an explicitly tagged current-month-to-date estimate targeted at
+month end. This gives the backend a real, reproducible shadow inference path;
+it does not recover the historical FLAN-T5 runner. The output uses the same
+IDs but remains excluded from usable latest values because the validation
+sample is too small and live summaries do not match its full-text training
+corpus. On 2026-10-09 it wrote 20 shadow rows from five captured FDA articles
+for the October month-end target; these are estimates, not October observations.
