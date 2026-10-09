@@ -29,7 +29,7 @@ IDENTITY_FIELDS = (
 COLLAPSED_DIMENSION_SIGNALS = set()
 MAX_HISTORY_SOURCE_ROWS = 10_000
 SIGNAL_SCHEMA_VERSION = 3
-SEED_DEFINITION_COUNT = 1312
+SEED_DEFINITION_COUNT = 1250
 SEED_DEFINITIONS_PATH = (Path(__file__).resolve().parents[1] / "catalog" /
                          "signal_definitions.json")
 NEWS_VERSION_FIELDS = ("url_hash", "source_name", "title", "url", "source",

@@ -1,23 +1,9 @@
 {
   "schema": "pulse_signal_definitions_v1",
-  "definition_count": 1312,
-  "source_sha256": "64d6c0f5f9a2efe36a76e8a2c89795f5a13c8270246eff4989f387ad0ac8cbed",
+  "definition_count": 1250,
+  "source_sha256": "2f4867bb2e3c45a2f2e03ec3dd331b7fdaddaf14a05669fed22e92bd9d72664d",
   "note": "Definitions only. No historical values or timestamps are included.",
   "definitions": [
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "national_unemployment_rate_lag_4",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LNS14000000?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_005cedc770910542d7f3e079"
-    },
     {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Mirabegron",
@@ -465,20 +451,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_06495215b53ea52a285774c9"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "nadac_ndc_price_row_count",
-      "cadence": "weekly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "rows",
-      "source_name": "National Average Drug Acquisition Cost",
-      "source_url": "https://data.medicaid.gov/dataset/nadac-national-average-drug-acquisition-cost",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_068a29451eccb4e6758b3f8a"
     },
     {
       "signal_origin": "model_news_output",
@@ -1097,20 +1069,6 @@
       "id": "sig_0f016acf1efe810fd0dc4454"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "arkansas_unemployment_rate_lag_4",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LAUST050000000000003?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_0f164423c9759788c6874067"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Dolutegravir/Rilpivirine",
       "cadence": "annual",
@@ -1291,20 +1249,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_12a39afc1e2cd5d3b6ef21e3"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "arkansas_unemployment_rate",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LAUST050000000000003?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_12c158f3196681334b8396d2"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -2259,20 +2203,6 @@
       "id": "sig_2271cd537aacaf00b39b74a3"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "medicaid_call_center_wait_time",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "minutes",
-      "source_name": "State Medicaid and CHIP Applications, Eligibility Determinations, and Enrollment Data",
-      "source_url": "https://download.medicaid.gov/data/pi-dataset-july-2026-release.csv",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_22c9031ecc5a379092c0cdef"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Fremanezumab-Vfrm",
       "cadence": "annual",
@@ -2327,20 +2257,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_235187051a565fa5391963a1"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "dual_eligible_rate",
-      "cadence": "annual",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "share",
-      "source_name": "CMS Medicare Geographic Variation - by National, State & County",
-      "source_url": "https://data.cms.gov/data-api/v1/dataset/6219697b-8f6c-4164-bed4-cd9317c58ebc/data",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_23bd3313dee97cb949fef345"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -2903,20 +2819,6 @@
       "id": "sig_2ae352a9ad19a41db2d5668b"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "inpatient_utilization",
-      "cadence": "annual",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "stays_per_1000_beneficiaries",
-      "source_name": "CMS Medicare Geographic Variation - by National, State & County",
-      "source_url": "https://data.cms.gov/data-api/v1/dataset/6219697b-8f6c-4164-bed4-cd9317c58ebc/data",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_2afce55736e70810b0693d26"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Fluticasone Propion/Salmeterol",
       "cadence": "annual",
@@ -3013,20 +2915,6 @@
       "state_definition": "0=Low, 1=Medium, 2=High",
       "model_output_type": "predicted_demand_state",
       "id": "sig_2c7e1b84b08e5ca5d2ce2752"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "consumer_price_index_all_items_lag_12",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "index",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/CUUR0000SA0?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_2c8546b8a5a47aa510142f7c"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -3183,20 +3071,6 @@
       "id": "sig_2ed508e2e58a503b4efb0778"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "consumer_price_index_all_items_change_1",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "index",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/CUUR0000SA0?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_2ee1747473cf4feaaa1a868a"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Degarelix Acetate",
       "cadence": "annual",
@@ -3323,20 +3197,6 @@
       "id": "sig_310789d3f46e82c46058eb3f"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "national_unemployment_rate",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LNS14000000?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_311cb7412dd45065e603b9c5"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Aminocaproic Acid",
       "cadence": "annual",
@@ -3363,20 +3223,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_3196d6134c01b4d435b59d8a"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "national_unemployment_rate_lag_12",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LNS14000000?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_3199510befffa06cff879373"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -3503,20 +3349,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_33a87cbeded8d1dd63e44989"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "chip_enrollment",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "persons",
-      "source_name": "State Medicaid and CHIP Applications, Eligibility Determinations, and Enrollment Data",
-      "source_url": "https://download.medicaid.gov/data/pi-dataset-july-2026-release.csv",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_33c4f895261f44db43f898ec"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -4247,20 +4079,6 @@
       "id": "sig_3df9aedab9748ca89e1cffc6"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "arkansas_unemployment_rate_change_1",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LAUST050000000000003?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_3e5578d3da23d0b9e40e9dfd"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Treprostinil",
       "cadence": "annual",
@@ -4583,20 +4401,6 @@
       "id": "sig_435b0cb6c5c0f9b89fbb2a13"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "national_unemployment_rate_seasonal_baseline",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LNS14000000?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_437f7143142174d89919d313"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "arkansas_atc_demand_state::C08",
       "cadence": "monthly",
@@ -4847,20 +4651,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_458b3da6b1237304f9bd6021"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "nadac_per_unit_mean",
-      "cadence": "weekly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "usd_per_unit",
-      "source_name": "National Average Drug Acquisition Cost",
-      "source_url": "https://data.medicaid.gov/dataset/nadac-national-average-drug-acquisition-cost",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_4599a0cf07a7f4034e153972"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -5157,20 +4947,6 @@
       "id": "sig_49a31783df0a7acde98bf86d"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "consumer_price_index_all_items_lag_4",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "index",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/CUUR0000SA0?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_49c2532ee6e1b25bd058bfcc"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Caplacizumab-Yhdp",
       "cadence": "annual",
@@ -5407,20 +5183,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_4d8c86591ef85a67ec265954"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "national_unemployment_rate_change_4",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LNS14000000?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_4da4ddec4ddd7571fecaef15"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -5899,20 +5661,6 @@
       "id": "sig_534ae2ed652eb6d5e0b33c40"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "medicare_advantage_participation_rate",
-      "cadence": "annual",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "share",
-      "source_name": "CMS Medicare Geographic Variation - by National, State & County",
-      "source_url": "https://data.cms.gov/data-api/v1/dataset/6219697b-8f6c-4164-bed4-cd9317c58ebc/data",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_534faac6ec99a90b0de1cc7c"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Leuprolide Acetate",
       "cadence": "annual",
@@ -6165,34 +5913,6 @@
       "id": "sig_5624a39a2dffafb9fb88ea50"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "home_health_utilization",
-      "cadence": "annual",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "visits_per_1000_beneficiaries",
-      "source_name": "CMS Medicare Geographic Variation - by National, State & County",
-      "source_url": "https://data.cms.gov/data-api/v1/dataset/6219697b-8f6c-4164-bed4-cd9317c58ebc/data",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_565ca7c28b26bf7b5ecabc52"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "medicaid_chip_total_enrollment",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "persons",
-      "source_name": "State Medicaid and CHIP Applications, Eligibility Determinations, and Enrollment Data",
-      "source_url": "https://download.medicaid.gov/data/pi-dataset-july-2026-release.csv",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_566c0a55bf96594cbea2a20a"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Felbamate",
       "cadence": "annual",
@@ -6261,20 +5981,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_576149fa06426f20475caa37"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "medicaid_call_center_abandonment_rate",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "rate",
-      "source_name": "State Medicaid and CHIP Applications, Eligibility Determinations, and Enrollment Data",
-      "source_url": "https://download.medicaid.gov/data/pi-dataset-july-2026-release.csv",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_57be41fc87610747264d8df0"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -6907,20 +6613,6 @@
       "id": "sig_632161692aba4d99b78fcf44"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "arkansas_unemployment_rate_seasonal_anomaly",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LAUST050000000000003?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_6338ce6610ca09d7a095b0c4"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "arkansas_atc_demand_state::A06",
       "cadence": "monthly",
@@ -7453,20 +7145,6 @@
       "id": "sig_6b2baeb3610be2c59389328a"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "national_unemployment_rate_change_1",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LNS14000000?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_6b610a74d35ad01d93aca5d3"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Oxazepam",
       "cadence": "annual",
@@ -7521,34 +7199,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_6c1ca0c7269eaf3ff46e6b26"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "recall_active",
-      "cadence": "weekly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "indicator",
-      "source_name": "FDA Enforcement / Recalls",
-      "source_url": "https://api.fda.gov/drug/enforcement.json",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_6cdc65a31d804938307dfd7d"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "arkansas_unemployment_rate_change_12",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LAUST050000000000003?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_6d5e00cbea1e34f4b4f5f9e7"
     },
     {
       "signal_origin": "model_news_output",
@@ -7929,20 +7579,6 @@
       "id": "sig_71d471945625910e4b8dcdb3"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "consumer_price_index_all_items_lag_1",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "index",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/CUUR0000SA0?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_7299dbbb9df74e6970d4657b"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Sodium Bicarbonate",
       "cadence": "annual",
@@ -8151,20 +7787,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_75209f606a1c88ba5b9aaaaf"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "emergency_department_utilization",
-      "cadence": "annual",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "visits_per_1000_beneficiaries",
-      "source_name": "CMS Medicare Geographic Variation - by National, State & County",
-      "source_url": "https://data.cms.gov/data-api/v1/dataset/6219697b-8f6c-4164-bed4-cd9317c58ebc/data",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_75395adfcc7657d5fe3ec4f9"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -8881,20 +8503,6 @@
       "id": "sig_80c883feb1fb5361d245f188"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "national_unemployment_rate_lag_1",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LNS14000000?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_81029d3add070578ee2383fe"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Nicardipine Hcl",
       "cadence": "annual",
@@ -9021,20 +8629,6 @@
       "id": "sig_82dded3b581f396aa9ffe1ba"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "medicaid_chip_child_enrollment",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "persons",
-      "source_name": "State Medicaid and CHIP Applications, Eligibility Determinations, and Enrollment Data",
-      "source_url": "https://download.medicaid.gov/data/pi-dataset-july-2026-release.csv",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_835e2700216efc5f1bc1eaab"
-    },
-    {
       "signal_origin": "model_news_output",
       "signal_id": "national_supply_stage_direction",
       "cadence": "monthly",
@@ -9089,20 +8683,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_83b572c54e11e87ea31ae9aa"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "consumer_price_index_all_items_rolling_std_12",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "index",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/CUUR0000SA0?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_83ec7b9836b193dd5e5827d1"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -9397,20 +8977,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_87b4f1c87eba23d194f9831f"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "consumer_price_index_all_items",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "index",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/CUUR0000SA0?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_87fc7da5d446de007cd8e83e"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -9735,20 +9301,6 @@
       "id": "sig_8be79d2b2e7281026509ad3c"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "arkansas_unemployment_rate_lag_1",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LAUST050000000000003?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_8bea5f7c8df6bfbfa8d92fae"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Miglitol",
       "cadence": "annual",
@@ -9901,20 +9453,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_8e6e8d2355e4b11c2eeb5ede"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "arkansas_unemployment_rate_rolling_mean_12",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LAUST050000000000003?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_8e9a7ba252caa2d8ee9485c8"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -10239,20 +9777,6 @@
       "id": "sig_928dd846ca22489fbc5fc2dc"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "nadac_per_unit_min",
-      "cadence": "weekly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "usd_per_unit",
-      "source_name": "National Average Drug Acquisition Cost",
-      "source_url": "https://data.medicaid.gov/dataset/nadac-national-average-drug-acquisition-cost",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_92cedb135eee3141e0986315"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Colchicine",
       "cadence": "annual",
@@ -10517,20 +10041,6 @@
       "state_definition": "",
       "model_output_type": "upstream_signal",
       "id": "sig_963f1c504a9bd1b7e14734d2"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "outpatient_utilization",
-      "cadence": "annual",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "visits_per_1000_beneficiaries",
-      "source_name": "CMS Medicare Geographic Variation - by National, State & County",
-      "source_url": "https://data.cms.gov/data-api/v1/dataset/6219697b-8f6c-4164-bed4-cd9317c58ebc/data",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_964f036e2316ac9c0af575be"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -11205,20 +10715,6 @@
       "id": "sig_9efc1d2996d808660e6a0669"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "medicare_per_capita_spending",
-      "cadence": "annual",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "usd_per_beneficiary",
-      "source_name": "CMS Medicare Geographic Variation - by National, State & County",
-      "source_url": "https://data.cms.gov/data-api/v1/dataset/6219697b-8f6c-4164-bed4-cd9317c58ebc/data",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_9f437a0e0b93cff34e927282"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Cimetidine",
       "cadence": "annual",
@@ -11485,20 +10981,6 @@
       "id": "sig_a14c2e986eccbbb44ed26425"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "national_unemployment_rate_change_12",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LNS14000000?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_a1510ac3c1a97ff2bf2bbc15"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Cariprazine Hcl",
       "cadence": "annual",
@@ -11581,20 +11063,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_a2d5ff76b3bcce17d0e13624"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "medicare_beneficiary_count",
-      "cadence": "annual",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "beneficiaries",
-      "source_name": "CMS Medicare Geographic Variation - by National, State & County",
-      "source_url": "https://data.cms.gov/data-api/v1/dataset/6219697b-8f6c-4164-bed4-cd9317c58ebc/data",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_a2f89f0e1d3239cfd8bcc26f"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -11779,20 +11247,6 @@
       "id": "sig_a52cf0438f731a9b68796d7f"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "national_unemployment_rate_seasonal_anomaly",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LNS14000000?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_a544187f2d149614c56c1b39"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Linezolid",
       "cadence": "annual",
@@ -11833,34 +11287,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_a5a8e4954265c7aa854df3c5"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "national_unemployment_rate_rolling_mean_12",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LNS14000000?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_a5ba7cc3cc1b24554579e8f3"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "post_acute_utilization",
-      "cadence": "annual",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "stays_per_1000_beneficiaries",
-      "source_name": "CMS Medicare Geographic Variation - by National, State & County",
-      "source_url": "https://data.cms.gov/data-api/v1/dataset/6219697b-8f6c-4164-bed4-cd9317c58ebc/data",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_a5bcf7fd4774058d087b6b57"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -12409,20 +11835,6 @@
       "id": "sig_abe2b20ab23857692dd76e85"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "nadac_per_unit_max",
-      "cadence": "weekly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "usd_per_unit",
-      "source_name": "National Average Drug Acquisition Cost",
-      "source_url": "https://data.medicaid.gov/dataset/nadac-national-average-drug-acquisition-cost",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_abf9fae87332750efd834070"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Desvenlafaxine Succinate",
       "cadence": "annual",
@@ -12927,20 +12339,6 @@
       "id": "sig_b1d96b96b348599ace47b6c1"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "arkansas_unemployment_rate_rolling_std_4",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LAUST050000000000003?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_b223ce77de59793e94dc580c"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Phenelzine Sulfate",
       "cadence": "annual",
@@ -12953,34 +12351,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_b23cb8cd783a46f81ac9b780"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "consumer_price_index_all_items_rolling_std_4",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "index",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/CUUR0000SA0?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_b2427ebb21c66afb8292eb52"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "arkansas_unemployment_rate_rolling_std_12",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LAUST050000000000003?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_b2e2f3d4f20da4e6272c7d49"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -13291,34 +12661,6 @@
       "id": "sig_b5ee5b413a77d19cbf695f77"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "national_unemployment_rate_rolling_std_12",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LNS14000000?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_b6206bbde00760e9a377ead8"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "adult_medicaid_enrollment",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "persons",
-      "source_name": "State Medicaid and CHIP Applications, Eligibility Determinations, and Enrollment Data",
-      "source_url": "https://download.medicaid.gov/data/pi-dataset-july-2026-release.csv",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_b625505ef3dfdea42bd8ef9b"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Furosemide",
       "cadence": "annual",
@@ -13457,20 +12799,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_b7d408224288fc9f8159de8f"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "arkansas_unemployment_rate_rolling_mean_4",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LAUST050000000000003?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_b86a59550d438f4252946f58"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -14173,20 +13501,6 @@
       "id": "sig_c133ca5f7dd286bc37a92d15"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "consumer_price_index_all_items_change_4",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "index",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/CUUR0000SA0?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_c25426add2fd28b4f17a3c7e"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Dronabinol",
       "cadence": "annual",
@@ -14439,20 +13753,6 @@
       "id": "sig_c5bfa2cdadcf98ed9cd040d2"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "consumer_price_index_all_items_rolling_mean_12",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "index",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/CUUR0000SA0?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_c63bfe1ec844c63f46d5c948"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Salsalate",
       "cadence": "annual",
@@ -14563,20 +13863,6 @@
       "state_definition": "",
       "model_output_type": "upstream_signal",
       "id": "sig_c7569c461841128eca3915f2"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "consumer_price_index_all_items_seasonal_anomaly",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "index",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/CUUR0000SA0?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_c799f15468cebe408b8687ca"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -14817,20 +14103,6 @@
       "id": "sig_c9a8d57d12da295732c39e0e"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "national_unemployment_rate_rolling_std_4",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LNS14000000?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_c9f072315083c32922e7d5a7"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Alprazolam",
       "cadence": "annual",
@@ -14901,20 +14173,6 @@
       "id": "sig_cb391ffe0d011dabe7c1b62e"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "arkansas_unemployment_rate_lag_12",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LAUST050000000000003?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_cb4b8f1d8717b53a9aee63ed"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "arkansas_atc_demand_state::C10",
       "cadence": "monthly",
@@ -14969,20 +14227,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_cd03a575e42b469c93f07def"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "arkansas_unemployment_rate_seasonal_baseline",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LAUST050000000000003?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_cd2ae84e325124acb378326c"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -15503,20 +14747,6 @@
       "id": "sig_d491d49b83ec3befb757b22b"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "arkansas_unemployment_rate_change_4",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LAUST050000000000003?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_d4b9378f1a21fe94f288c2ea"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Immun Globg(Igg)/Malt/Iga Ov50",
       "cadence": "annual",
@@ -15613,20 +14843,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_d5dc672048d193b45b9f348b"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "consumer_price_index_all_items_change_12",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "index",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/CUUR0000SA0?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_d62308ce1aa4bbda795b5fed"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -15865,20 +15081,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_d85e634c1c8ef8150b990c3e"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "medicaid_enrollment",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "persons",
-      "source_name": "State Medicaid and CHIP Applications, Eligibility Determinations, and Enrollment Data",
-      "source_url": "https://download.medicaid.gov/data/pi-dataset-july-2026-release.csv",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_d893bd86e230d704f00eb745"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -16231,20 +15433,6 @@
       "id": "sig_dc8fea94ac60cc20dbdc4d20"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "national_unemployment_rate_rolling_mean_4",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "percent",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/LNS14000000?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_dc943f9dc5f9802e5dad4993"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Ivosidenib",
       "cadence": "annual",
@@ -16271,20 +15459,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_ddf4881b25113f91e5cffb90"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "consumer_price_index_all_items_rolling_mean_4",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "index",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/CUUR0000SA0?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_de0eb088a4e6e1be78e3c58d"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -16509,20 +15683,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_e1f8688ea2cc9a684f29a34c"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "shortage_active",
-      "cadence": "weekly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "indicator",
-      "source_name": "FDA Drug Shortages",
-      "source_url": "https://api.fda.gov/drug/shortages.json",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_e22a642d32b7b8b4a7ad528a"
     },
     {
       "signal_origin": "derived_demand_output",
@@ -17645,20 +16805,6 @@
       "id": "sig_f59c398a9c7761acead26ac5"
     },
     {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "consumer_price_index_all_items_seasonal_baseline",
-      "cadence": "monthly",
-      "geography_level": "national",
-      "geography_id": "US",
-      "entity_key": "",
-      "unit": "index",
-      "source_name": "BLS Public Data API",
-      "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/CUUR0000SA0?startyear=2020&endyear=2026",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_f626f44d51b45572626e764e"
-    },
-    {
       "signal_origin": "derived_demand_output",
       "signal_id": "cms_part_d_demand_state::Brexpiprazole",
       "cadence": "annual",
@@ -18301,20 +17447,6 @@
       "state_definition": "0=Lowest to 4=Highest",
       "model_output_type": "predicted_demand_state",
       "id": "sig_fedd4cb13126f09cc673b092"
-    },
-    {
-      "signal_origin": "model_external_state_feature",
-      "signal_id": "medicaid_chip_new_applications",
-      "cadence": "monthly",
-      "geography_level": "state",
-      "geography_id": "AR",
-      "entity_key": "",
-      "unit": "applications",
-      "source_name": "State Medicaid and CHIP Applications, Eligibility Determinations, and Enrollment Data",
-      "source_url": "https://download.medicaid.gov/data/pi-dataset-july-2026-release.csv",
-      "state_definition": "",
-      "model_output_type": "upstream_signal",
-      "id": "sig_fefe1f0e10820c496aba0b53"
     },
     {
       "signal_origin": "derived_demand_output",
