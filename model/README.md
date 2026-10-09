@@ -94,6 +94,7 @@ Arkansas is the primary local evaluation setting. National, neighboring-state, a
 | `rebuilt_demand/` | Runnable 20-output temporal replacement, exploratory article-text experiment, 90-configuration synthetic-demand training/evaluation pipeline, and fixed historical-recipe inference model described above. |
 | `tests/` | Unit and contract tests for schemas, chronology, joins, model behavior, target evaluation, output validation, and CLI-related behavior. |
 | `docs/` | Design and research documentation: architecture, data sources, implementation and target contracts, testing protocol, availability limitations, status, and review history. |
+| `docs/REBUILD_PROGRESS.md` | Dated progress log for the local 20-output and 1,312-signal rebuild, including verified metrics and unresolved data gaps. |
 | `scripts/` | Standalone audit and reproducibility helpers, including metric-library and project-status checks. These complement, but do not replace, the package CLI and pytest suite. |
 | `artifacts/` | Generated local outputs, including panels, trained model metadata, forecast tables, news artifacts, evaluation reports, and run metadata. Contents depend on which commands have been run and are not all source-controlled or reproducible without the corresponding input data. |
 | `prod_pipeline.py` | A separate legacy historical-fit script. Its forecast and CLI emission paths fail closed because current news-model and ATC inputs are unavailable. It is not the same pipeline as the package CLI. See [Legacy JSON output](#legacy-json-output). |
