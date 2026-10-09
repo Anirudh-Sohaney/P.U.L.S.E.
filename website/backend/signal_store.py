@@ -799,7 +799,7 @@ def seed_coverage_summary() -> dict:
             continue
         max_lag_days = {"weekly": 14, "monthly": 60, "annual": 400}.get(cadence)
         source_recent = (max_lag_days is not None and
-                         timedelta(0) <= today - observed <= timedelta(days=max_lag_days))
+                         today - observed <= timedelta(days=max_lag_days))
         if source_recent:
             recent_observation_ids.add(row["id"])
         if row["signal_origin"] == "derived_demand_output":
