@@ -64,8 +64,11 @@ schedule and failure status, so a failed GDELT retry does not delay the FDA
 feeds. `--once` forces every adapter to run.
 The GDELT adapter retries transient connection failures and HTTP 5xx responses
 up to three times with short backoff. It does not immediately retry HTTP 429;
-the worker's six-hour failed-source cooldown applies instead. FDA successes
-remain visible even when GDELT is rate limited.
+the worker waits at least 24 hours before retrying a GDELT 429. When a 429
+includes `Retry-After`, its UTC retry deadline is recorded with that refresh
+failure and the worker waits until both that deadline and the 24-hour minimum
+cooldown have passed. Other source failures keep the six-hour cooldown. FDA
+successes remain visible even when GDELT is rate limited.
 It checks for failed sources hourly and retries them after six hours; the
 unregistered BLS adapter waits until the next daily schedule so a partial
 failure cannot exhaust its 25-query daily allowance.
@@ -359,7 +362,7 @@ keys:
 
 | Input | Current adapter | Credential status |
 | --- | --- | --- |
-| General recent news | GDELT DOC API | Public; no key configured. It can return HTTP 429, which is recorded as a source failure and retried after the worker cooldown. |
+| General recent news | GDELT DOC API | Public; no key configured. HTTP 429 responses are recorded as source failures; the worker observes `Retry-After` when provided and enforces a 24-hour minimum cooldown. |
 | Drug safety and pharmacy context | FDA Drugs, MedWatch, Recalls, and Press RSS feeds; openFDA shortage API | Public; no key configured. |
 | Labor and price context | BLS Public Data API v1; CMS NADAC download | Public; no key configured. The worker currently makes fewer than the documented unregistered BLS daily request budget. |
 | Arkansas public demand and context | CMS Part D catalog/source, CMS Geographic Variation API, Medicaid State Performance API, Arkansas SDUD downloads, and HHS NDC release catalog | Public; no key configured. The Part D source is checksum- and manifest-validated before the daily projection is published. |
@@ -377,6 +380,7 @@ All routes are also described at `/docs` and in the frontend API guide.
 | Route | Meaning |
 | --- | --- |
 | `GET /api/v1/signals/catalog` | All 1,312 checked-in seed IDs plus stable IDs added for evaluated newer-drug outputs; identity fields, units, source, and last period. Search and pagination are supported. |
+| `GET /api/v1/signals/catalog/seed` | Exactly the 1,312 checked-in seed definitions and stable IDs. Definitions only; query `/latest` or `/history` for recorded values. |
 | `POST /api/v1/signals/latest` | Latest usable recorded observations in `values` for up to 1,500 IDs, including the full current catalog in one call. `latest_recorded_values` contains the absolute latest stored row for every requested ID with a record, including unvalidated rows flagged `usable: false`. For IDs without a usable value, `unusable_recorded_values` highlights that archived row; `missing_ids` and `missing_details` report the usable-value gap. Unknown IDs have no recorded row. Date filters are rejected; unresolved same-revision conflicts carry `ambiguous: true` and are excluded from usable values. |
 | `POST /api/v1/signals/history` | Recorded values for up to 100 IDs on an exact `date` or any `start_date`/`end_date` range, including the full available 2013–present history. The newest source revision for each period is returned by default; `include_revisions: true` returns each recorded revision for point-in-time training. Missing dates are absent. A request exceeding 10,000 raw source rows returns HTTP 413 with no truncated result; split IDs or dates. Browser training retries smaller ID batches automatically. |
 | `GET /api/v1/signals/freshness` | Catalog counts, latest periods, and last worker run. |
@@ -661,7 +665,7 @@ its missing upstream 20-feature inference path still prevents live use.
 | Input | Current implementation | Credential needed |
 | --- | --- | --- |
 | [openFDA drug shortages](https://open.fda.gov/apis/drug/drugshortages/how-to-use-the-endpoint/) | Daily full snapshot, source `last_updated`, raw record JSON, record change dates, and an immutable membership list for each successful fetch. The latest API view reads one complete fetch even when the source changes twice on the same UTC day. It does not refresh a model signal. | A free `OPENFDA_API_KEY` is recommended for sustained deployment; the local two-page daily pull works without a key under [openFDA's lower unauthenticated limits](https://open.fda.gov/apis/authentication/). |
-| [GDELT DOC 2.0](https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/) | Daily recent article metadata, title relevance, and GDELT `seendate` (first seen by the feed; publisher publication time is not verified). The worker catches up at most 90 days in three-day windows, splits result-capped windows, and waits 10 seconds between follow-up requests (64-request hard limit). GDELT documents a rolling three-month search limit and warns that its DOC API is rate limited; this conservative delay has not yet been verified against a successful catch-up. The WSL worker loaded this change at 2026-10-07 02:29 UTC; its next GDELT retry remains subject to the six-hour failure cooldown. | No key for the DOC API, but outbound access to `api.gdeltproject.org` is needed. |
+| [GDELT DOC 2.0](https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/) | Daily recent article metadata, title relevance, and GDELT `seendate` (first seen by the feed; publisher publication time is not verified). The worker catches up at most 90 days in three-day windows, splits result-capped windows, and waits 10 seconds between follow-up requests (64-request hard limit). GDELT documents a rolling three-month search limit and warns that its DOC API is rate limited; this conservative delay has not yet been verified against a successful catch-up. HTTP 429 retry deadlines persist across schedule boundaries; without a valid header, the retry waits at least 24 hours. | No key for the DOC API, but outbound access to `api.gdeltproject.org` is needed. |
 | [FDA Drugs RSS](https://www.fda.gov/about-fda/contact-fda/subscribe-podcasts-and-news-feeds) | Checked independently each day for recent FDA drug approval, recall, shortage, and safety event titles, even when GDELT fails. A named medicine can qualify without a generic “drug” keyword; generic approval-notification index pages are excluded. A feed update is not necessarily the date a medical event occurred. | No key. |
 | [FDA MedWatch RSS](https://www.fda.gov/safety/medwatch-fda-safety-information-and-adverse-event-reporting-program/medwatch-rss-feed) | Checked independently for drug-keyword safety alerts. Device-only paths and items without drug terms are excluded; an empty three-day window stays empty. The RSS date is the feed item date, not a demand observation. | No key. |
 | [FDA Recalls RSS](https://www.fda.gov/about-fda/contact-fda/subscribe-podcasts-and-news-feeds) | Checked independently for recent drug-related recall notices. Food-only notices are excluded. The RSS date is the feed item date, not a demand observation. | No key. |
@@ -689,9 +693,10 @@ pharmacy-provider claim-line target, so it cannot supply a valid current
 feature vector for the 18 model IDs. This remains true even if the crosswalk
 is expanded; source and outcome compatibility must be evaluated separately.
 
-On 2026-10-07 UTC, GDELT's most recent scheduled attempt returned HTTP 429; FDA Drugs, MedWatch, Recalls, and Press RSS checks succeeded. The updated worker restarted at 02:29 UTC and its heartbeat is current. No GDELT request has run under the new pacing yet, so it remains unverified against a successful upstream response.
-The FDA Drugs feed succeeded and recorded one recent drug-event item. A third
-adapter now reads the [official FDA MedWatch RSS feed](https://www.fda.gov/safety/medwatch-fda-safety-information-and-adverse-event-reporting-program/medwatch-rss-feed)
+At the 2026-10-07 UTC check, GDELT's most recent scheduled attempt returned HTTP 429; FDA Drugs, MedWatch, Recalls, and Press RSS checks succeeded. The updated worker restarted at 02:29 UTC and its heartbeat was current. No GDELT request had run under the new pacing at that point.
+During that 2026-10-07 check, the FDA Drugs feed succeeded and recorded one
+recent drug-event item. A third adapter now reads the [official FDA MedWatch
+RSS feed](https://www.fda.gov/safety/medwatch-fda-safety-information-and-adverse-event-reporting-program/medwatch-rss-feed)
 and retains drug-keyword safety items, excluding device-only alerts.
 The fourth adapter reads FDA's official Recalls RSS feed and retains drug-related
 notices while excluding food-only recalls. Its first local run found no
@@ -703,6 +708,27 @@ FDA feeds do not claim broad news coverage. Do not fill
 the missing GDELT window with inferred articles or model-news values. A cloud
 host should monitor `failed_sources` and verify its own access to GDELT before
 depending on that feed for recent context.
+For an operator-side check from `website/`, run
+`python -m scripts.operational_status worker` to check the heartbeat and
+`python -m scripts.operational_status sources` to fail on missing, stale, or
+failed scheduled sources. The API's `/health` is process liveness, `/ready`
+checks the catalog and database bootstrap, and
+`/api/v1/signals/freshness` exposes per-source state for external monitoring.
+
+On 2026-10-09 UTC, the live API health check returned `healthy` and the refresh
+worker heartbeat was current. The latest GDELT attempt (02:24 UTC) again
+returned HTTP 429; its last successful refresh was 2026-10-06 00:48 UTC. FDA
+Drugs, MedWatch, Recalls, and Press RSS checks succeeded at 02:24 UTC. The
+three-day news endpoint returned four dated FDA Drugs RSS items. The catalog
+contained 1,424 definitions and 20,786 observations, with the newest stored
+observation dated 2026-09-30. The 20 legacy news-model signals remained
+`not_configured`, with their latest archived period at 2026-01-31; no current
+news-model values were generated. Coverage classified 1,324 drug outputs as
+evaluated two-year baseline projections, 18 ATC outputs as requiring a
+current compatible source and validated rerun, six identities as collapsed,
+and 56 source signals as having a recorded live observation. These counts are
+a point-in-time operational snapshot, not a claim that every upstream source
+is complete through the current date.
 
 On 2026-10-03, the worker downloaded the official 2024 CMS CSV once to verify
 the previously imported normalized panel before trusting its modification
@@ -809,6 +835,20 @@ directives. Set a unique
 `SECRET_KEY`, `PUBLIC_ORIGIN`, `ENVIRONMENT=production`, and `COOKIE_SECURE=true` behind HTTPS
 before any hosted deployment.
 
+For operator-assisted account recovery, run this from `website/` on the account
+database host:
+
+```bash
+python -m scripts.reset_account_password USERNAME
+```
+
+The command prompts for a new password, requires an explicit `RESET`
+confirmation, updates the Argon2id hash, clears failed-login attempts, and
+revokes every active session for that account. It does not expose a public
+password-reset endpoint. Saved browser plans are encrypted with the previous
+password; if the user does not know it, the plan cannot be recovered and must
+be retrained from their local sales and inventory files.
+
 The old `/api/demand/*` server upload and training routes are disabled by
 default. They can be enabled for local migration testing with
 `ENABLE_LEGACY_SERVER_TRAINING=true`, but production configuration rejects
@@ -817,5 +857,6 @@ are scoped to a single API host with one persistent data volume. Before
 running concurrent cloud API replicas, move to a shared database service such
 as PostgreSQL and deploy database-native migration and connection-pooling
 support; the SQLite file locks do not make a multi-host database safe.
-Account recovery, complete source refresh coverage, monitoring/alert routing,
-and a deployment rehearsal also remain open production gates.
+Self-service account recovery, complete source refresh coverage,
+monitoring/alert routing, and a deployment rehearsal remain open production
+gates.

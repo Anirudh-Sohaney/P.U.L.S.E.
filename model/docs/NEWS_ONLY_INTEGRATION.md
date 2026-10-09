@@ -28,6 +28,18 @@ used an all-zero feature vector. The current script fails closed for those
 reasons. The separate `news_signals.py` event-state layer is another valid
 transformation, but it does not reproduce the legacy 20 columns.
 
+The history review also checked the original `6d13c14` architecture snapshot:
+`existing_models/pharmacy_architecture/news.py` only summarizes input rows that
+already contain `lm_event`, `lm_stage`, and `lm_direction`; it has no GDELT
+client or FLAN-T5 call. The later `d6ca4b7` snapshot adds only the news-model
+README, completion-gate metadata, and dated 20-column CSV. The pre-reset Git
+bundle points to the same `d5e11df` tree, and the pre-reset workspace archive
+contains the same project snapshot without another inference implementation.
+No matching model checkpoint is tracked in Git LFS or present among the local
+serialized model artifacts. This evidence establishes what is available in
+these local and configured Git recovery sources; it does not rule out a copy
+in another repository or external archive.
+
 The integrated runner itself is present in the historical Git commit
 `d5e11df` (`feat: Add unified prod pipeline...`). It trained downstream heads
 from the 20-column dated news table, plus Arkansas ATC and CMS Part D inputs.
@@ -77,3 +89,24 @@ historical output; unknown article publication times cannot be inferred from
 the monthly rows. A live replacement requires a versioned acquisition and
 inference pipeline, source timestamps, and chronological evaluation before it
 can be promoted to the public latest endpoint.
+
+The rebuild under `model/rebuilt_demand/` adds a local temporal model that
+forecasts the same 20 IDs from their archived histories. Its values can be
+merged into the 1,312-signal catalog at their declared month end for the local
+synthetic-demand forecast. This is a schema-compatible replacement, not the
+historical article-to-signal generator. A separate GDELT corpus is available
+under `data/targeted_additions/news_article_corpus/`: it has 354 records, 292
+full-text records, but only 10 distinct publication months from 2023-10 to
+2025-12. The monthly 20-column artifact has 97 rows and no per-article target
+labels, so the text corpus is too sparse to support a defensible news-based
+replacement without more monthly coverage and stronger signal-label
+provenance. The 14-day pharmacy-demand benchmark and its current holdout
+results are documented in `model/comparison.md`.
+
+The rebuild also records an exploratory TF-IDF/Ridge article-to-output fit in
+`model/rebuilt_demand/train_news_text.py`. It scored 11.91% pooled WAPE on its
+last two matched months versus 87.07% for persistence, but only 10 monthly
+examples were available and the text is aggregated through month end. These
+two months do not validate a reliable forward news model; the experiment is
+kept as a reproducible research artifact and is not the production 20-signal
+path.

@@ -6,6 +6,56 @@ The system is designed as a contextual signal layer for pharmacy and public-heal
 
 This README is the entry point to the codebase. The detailed evidence, source citations, target definitions, and contracts remain in `docs/` and in the data-source manifests under `../data/`.
 
+## Rebuilt 20-signal and 1,312-signal demand model
+
+The local replacement workflow lives in [`rebuilt_demand/`](rebuilt_demand/). It is a clean, separately documented path alongside the existing Arkansas research package. It contains a temporal replacement for the archived 20 monthly outputs and a per-drug XGBoost demand model trained against the 1,312 dated catalog signals. The archived article-to-20-signal runner and its weights were not present in the inspected Git history. A separate local GDELT corpus contains 354 articles (292 full-text) across only 10 publication months, which is too sparse to train and validate a dependable article-conditioned model against 97 monthly outputs. The 20-output replacement is therefore explicitly a time-series forecast of the archived outputs; it does not claim to reproduce news understanding.
+
+| Artifact | Location | Purpose |
+|---|---|---|
+| Training/evaluation code | `rebuilt_demand/train.py` | Builds leakage-safe features, compares 90 configurations, selects on validation, and evaluates the winner and fixed historical recipe on the final holdout. |
+| Initial 20-output models | `rebuilt_demand/models/initial_20_signals/*.json` | One XGBoost model per archived signal ID. |
+| Next-month 20-signal output | `rebuilt_demand/models/initial_20_signals/next_month_20_signals.csv` | Latest date plus the 20 predicted signal values. |
+| Experimental article model | `rebuilt_demand/train_news_text.py` and `rebuilt_demand/models/initial_20_signals/article_text_model.joblib` | TF-IDF/Ridge text-to-20-signal experiment; exploratory only, with 10 matched months and a 2-month holdout. |
+| Article experiment results | `rebuilt_demand/article_text_20_signal_metrics.json` and `rebuilt_demand/article_text_20_signal_test_predictions.csv` | Reproducible scores and test predictions for the small article-text experiment. |
+| Selected demand models | `rebuilt_demand/models/demand_*.json` | One XGBoost model per synthetic drug series, using the validation-selected input/configuration. |
+| Selected-model contract | `rebuilt_demand/selected_demand_model.json` | Chosen configuration, dates, feature names, selected signals per drug, and output model location. |
+| Historical-recipe models | `rebuilt_demand/models/legacy_recipe/demand_*.json` | The fixed top-five 1/7/14-day recipe from the earlier benchmark, retrained with a 14-day boundary purge. |
+| Historical-recipe contract | `rebuilt_demand/legacy_recipe_demand_model.json` | Features and scores for the separately reproducible historical recipe. This is the default inference recipe. |
+| Initial 20-signal metrics | `rebuilt_demand/initial_20_metrics.json` | Chronological holdout scores per output versus persistence. |
+| All comparison results | `rebuilt_demand/comparison_results.csv` and `.json` | Validation results for every predeclared configuration and final-period scores for the selected model and its matched sales-only XGBoost baseline. |
+| Per-drug gains | `rebuilt_demand/selected_model_per_drug_test.csv` | Final-period WAPE, same-profile sales-only WAPE, and per-drug WAPE change. |
+| Historical per-drug gains | `rebuilt_demand/legacy_recipe_per_drug_test.csv` | Paired per-drug results for the historical recipe and matched sales-only baseline. |
+| Human-readable comparison | [`comparison.md`](comparison.md) | Protocol, all 90 configurations, final holdout, per-drug results, and limitations. |
+
+The demand target is each drug's next 14 calendar days of synthetic units sold. The data are the deterministic single-clinic panel in `../data/synthetic_pharmacy_data/arkansas_clinic_daily_pharmacy_sales.csv` and the frozen dated signal table in `../test/test_Signals/signals_2023_2025.csv.gz`. Sales inputs include prior-day sales lags through 56 days, rolling means and standard deviations through 56 days, calendar terms, lagged price, and lagged stockout. Signal selection uses the first 60% of dates only; configuration selection uses the next 20%; the final 20% is held back for a final evaluation. A 14-day purge at both boundaries prevents a training target from including outcomes in the following period. Sales history uses observations through the forecast origin. Signal values are carried forward only after `period_end`, then lagged before they enter the forecast model. The synthetic event tags are never features.
+
+Run from the repository root with the model environment installed:
+
+```bash
+python -m pip install -e ./model
+python model/rebuilt_demand/train.py
+```
+
+The run trains 90 configurations across 30 drug series, spanning feature sets, signal ranking lags, tree depth, estimator count, regularization, and squared-error, Poisson, Tweedie, and pseudo-Huber objectives. It selects the grid winner on validation WAPE, refits it on the first 80% of dates (with the final 14 training origins purged), and also retrains the fixed historical recipe into its separate model directory. Use `python model/rebuilt_demand/train.py --skip-20-signal` only when reusing an already trained initial 20-signal artifact. After training, produce next-14-day demand forecasts with the fixed historical recipe by default:
+
+```bash
+python model/rebuilt_demand/predict.py \
+  --sales data/synthetic_pharmacy_data/arkansas_clinic_daily_pharmacy_sales.csv \
+  --signals test/test_Signals/signals_2023_2025.csv.gz
+```
+
+The prediction command requires the same sales and dated-signal schemas as training, and the same drug series. It adds the latest 20-output model prediction to the 1,312-signal catalog at that forecast month's `period_end`, then makes per-drug demand predictions from the selected catalog inputs. Other catalog signals remain sourced from the supplied dated signal file. Its output labels itself as a synthetic-benchmark model. See [`comparison.md`](comparison.md) for measured results and cautions; all demand scores use synthetic data and do not establish accuracy on observed pharmacy sales.
+
+To run the 90-grid validation winner instead, add `--recipe validation-selected`. That candidate is preserved for comparison; it had the lowest validation WAPE but did not beat its matched sales-only model on the final period.
+
+An optional article-text experiment can be rerun with the development extras installed (`python -m pip install -e '.[dev]'` from `model/`) using `python model/rebuilt_demand/train_news_text.py`. It uses article text to predict the archived same-month 20-signal values, so it is a month-end estimation experiment, not an ahead-of-time forecast. Its 10 matched months and two test months are far too few to support production use; it does not replace the temporal model or establish the behavior of the missing historical runner.
+
+### Current measured results
+
+The 90-configuration grid selected `top5_all_lag1__shallow_poisson` using validation WAPE. After applying the 14-day boundary purge, it scored **32.87% pooled WAPE** on the final 6,180 forecast origins beginning 2025-05-26, versus **29.85%** for the matched sales-only Poisson XGBoost model. That is a 10.14% relative WAPE regression with the selected signals.
+
+The fixed historical recipe, rerun with the 14-day target purge, scored **29.27% pooled WAPE** versus **31.96%** for its matched sales-only model, an 8.43% relative WAPE reduction. It improved WAPE for **18 of 30 drugs** and averaged 28.28% per-drug WAPE versus 31.25% sales-only. This closely reproduces the repository's earlier **29.40% vs. 32.35%** result without the boundary overlap. It is the default local demand forecast recipe; the comparison uses the same synthetic holdout and is not evidence of accuracy on observed pharmacy sales. The 90-grid validation winner scores worse than its matched baseline, and remains available for comparison. The 20-output temporal replacement averaged **6.3771 MAE** across its final 20 monthly rows versus **8.9300** for persistence, but it forecasts archived output values from their own lags and calendar, not from article text. A separate TF-IDF/Ridge experiment scored **11.91% pooled WAPE** versus **87.07%** for persistence on its final two matched months; this result is highly unstable at that sample size and does not justify promoting the article model. See [`comparison.md`](comparison.md) for all variants, individual drug results, and exact limitations.
+
 ## What the system does
 
 At a high level, the code turns dated public observations into traceable, model-ready signals and then into evaluated, filterable forecast surfaces:
@@ -41,6 +91,7 @@ Arkansas is the primary local evaluation setting. National, neighboring-state, a
 | Path | What it contains |
 |---|---|
 | `arkansas_pharma_signal/` | Main Python package. Source adapters, feature and panel builders, target-specific evaluators, models, output validators, and the command-line interface live here. |
+| `rebuilt_demand/` | Runnable 20-output temporal replacement, exploratory article-text experiment, 90-configuration synthetic-demand training/evaluation pipeline, and fixed historical-recipe inference model described above. |
 | `tests/` | Unit and contract tests for schemas, chronology, joins, model behavior, target evaluation, output validation, and CLI-related behavior. |
 | `docs/` | Design and research documentation: architecture, data sources, implementation and target contracts, testing protocol, availability limitations, status, and review history. |
 | `scripts/` | Standalone audit and reproducibility helpers, including metric-library and project-status checks. These complement, but do not replace, the package CLI and pytest suite. |
@@ -186,7 +237,7 @@ In particular:
 
 ## Install and run
 
-Run commands from the repository root. The package metadata requires Python 3.9+ and the core dependencies `pandas` and `numpy`; scikit-learn and pytest are included in the `dev` optional extra, and PyTorch is in the `deep` extra. Individual source adapters may need additional packages or data files. The repository may use a project-local environment such as `data/.venv`; substitute the correct interpreter for your machine.
+Run commands from the repository root. The package metadata requires Python 3.9+ and the core dependencies `pandas`, `numpy`, and `xgboost`; scikit-learn and pytest are included in the `dev` optional extra, and PyTorch is in the `deep` extra. Individual source adapters may need additional packages or data files. The repository may use a project-local environment such as `data/.venv`; substitute the correct interpreter for your machine.
 
 Example setup:
 

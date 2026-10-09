@@ -7,6 +7,7 @@ import fcntl
 import json
 import logging
 import os
+import re
 import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -34,6 +35,9 @@ logger = logging.getLogger(__name__)
 SCHEDULE_HOUR_UTC = 16
 RETRY_POLL_SECONDS = 60 * 60
 RETRY_DELAY = timedelta(hours=6)
+GDELT_RATE_LIMIT_RETRY_DELAY = timedelta(hours=24)
+RETRY_AFTER_PATTERN = re.compile(r"\[retry_after_until=([^\]]+)\]")
+HTTP_429_PATTERN = re.compile(r"\bHTTP Error 429\b")
 MAX_SLEEP_SLICE_SECONDS = 60
 REFRESH_TASKS: tuple[tuple[Callable[[], dict], tuple[str, ...]], ...] = (
     (refresh_gdelt_news, ("gdelt_recent_news",)),
@@ -102,10 +106,17 @@ def due_tasks(now: datetime | None = None) -> list[Callable[[], dict]]:
                              MAX(finished_at) AS last_success FROM refresh_runs
                              WHERE status='success' AND finished_at>=?
                              GROUP BY source_name""", (cutoff,))}
-        failed_at = {row["source_name"]: datetime.fromisoformat(row["last_failure"])
-                     for row in db.execute("""SELECT source_name, MAX(finished_at) AS last_failure
-                         FROM refresh_runs WHERE status='failed' AND finished_at>=?
-                         GROUP BY source_name""", (cutoff,))}
+        latest_success_at = {row["source_name"]: datetime.fromisoformat(row["last_success"])
+                             for row in db.execute("""SELECT source_name,
+                                 MAX(finished_at) AS last_success FROM refresh_runs
+                                 WHERE status='success' GROUP BY source_name""")}
+        failed_at = {row["source_name"]: (datetime.fromisoformat(row["finished_at"]),
+                                           row["error"] or "")
+                     for row in db.execute("""SELECT source_name, finished_at, error
+                         FROM refresh_runs AS failed WHERE status='failed'
+                         AND finished_at=(SELECT MAX(latest.finished_at) FROM refresh_runs AS latest
+                           WHERE latest.source_name=failed.source_name
+                             AND latest.status='failed')""")}
     due = []
     for refresh, names in REFRESH_TASKS:
         last_success = max((successful_at[name] for name in names if name in successful_at),
@@ -116,14 +127,33 @@ def due_tasks(now: datetime | None = None) -> list[Callable[[], dict]]:
             and successful_at.get("cms_partd_catalog_source", last_success) > last_success)
         if all_sources_succeeded and not source_newer_than_baseline:
             continue
-        latest_failure = max((failed_at[name] for name in names if name in failed_at),
-                             default=None)
+        latest_failure = max((failed_at[name] for name in names if name in failed_at
+                              and (name not in latest_success_at
+                                   or failed_at[name][0] > latest_success_at[name])),
+                             key=lambda item: item[0], default=None)
         if latest_failure is not None:
             # The unregistered BLS API permits only 25 queries per day. A
             # partial refresh can already have spent nine, so wait for the
             # next daily schedule before another attempt.
-            if refresh is refresh_bls or current - latest_failure < RETRY_DELAY:
+            failed_time, failure_message = latest_failure
+            if refresh is refresh_bls:
                 continue
+            minimum_retry_delay = RETRY_DELAY
+            if refresh is refresh_gdelt_news and HTTP_429_PATTERN.search(failure_message):
+                minimum_retry_delay = max(minimum_retry_delay,
+                                          GDELT_RATE_LIMIT_RETRY_DELAY)
+            if current - failed_time < minimum_retry_delay:
+                continue
+            retry_after_match = RETRY_AFTER_PATTERN.search(failure_message)
+            if retry_after_match:
+                try:
+                    retry_after_until = datetime.fromisoformat(retry_after_match.group(1))
+                    if retry_after_until.tzinfo is None:
+                        retry_after_until = retry_after_until.replace(tzinfo=timezone.utc)
+                except ValueError:
+                    retry_after_until = None
+                if retry_after_until is not None and current < retry_after_until:
+                    continue
         due.append(refresh)
     return due
 

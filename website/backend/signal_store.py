@@ -33,6 +33,9 @@ COLLAPSED_DIMENSION_SIGNALS = {
 }
 MAX_HISTORY_SOURCE_ROWS = 10_000
 SIGNAL_SCHEMA_VERSION = 1
+SEED_DEFINITION_COUNT = 1312
+SEED_DEFINITIONS_PATH = (Path(__file__).resolve().parents[1] / "catalog" /
+                         "signal_definitions.json")
 NEWS_VERSION_FIELDS = ("url_hash", "source_name", "title", "url", "source",
                        "source_timestamp", "timestamp_kind", "relevance_score",
                        "matched_terms", "summary_text")
@@ -278,6 +281,26 @@ def signal_uid(row: dict) -> str:
     return "sig_" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:24]
 
 
+def seed_definitions() -> list[dict]:
+    """Return the exact, validated 1,312-definition public seed manifest."""
+    payload = json.loads(SEED_DEFINITIONS_PATH.read_text(encoding="utf-8"))
+    rows = payload.get("definitions")
+    if (payload.get("schema") != "pulse_signal_definitions_v1"
+            or payload.get("definition_count") != SEED_DEFINITION_COUNT
+            or not isinstance(rows, list) or len(rows) != SEED_DEFINITION_COUNT):
+        raise ValueError("Signal seed definition manifest is malformed")
+    seen: set[str] = set()
+    for row in rows:
+        if (not isinstance(row, dict)
+                or any(field not in row for field in IDENTITY_FIELDS)
+                or row.get("id") != signal_uid(row)):
+            raise ValueError("Signal seed definition manifest has an invalid stable ID")
+        if row["id"] in seen:
+            raise ValueError("Signal seed definition manifest contains duplicate IDs")
+        seen.add(row["id"])
+    return rows
+
+
 def _timestamp(value: object) -> str | None:
     parsed = pd.to_datetime(value, errors="coerce", utc=True)
     if pd.isna(parsed):
@@ -319,21 +342,9 @@ def import_definitions(source: Path) -> dict:
 
 def catalog_seed_status() -> dict:
     """Check that the complete checked-in seed manifest is present in the DB."""
-    manifest_path = Path(__file__).resolve().parents[1] / "catalog" / "signal_definitions.json"
-    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    rows = payload.get("definitions")
-    expected = payload.get("definition_count")
-    if (payload.get("schema") != "pulse_signal_definitions_v1"
-            or not isinstance(rows, list) or not isinstance(expected, int)
-            or len(rows) != expected):
-        raise ValueError("Signal seed definition manifest is malformed")
-    expected_ids = set()
-    for row in rows:
-        if not isinstance(row, dict) or row.get("id") != signal_uid(row):
-            raise ValueError("Signal seed definition manifest has an invalid stable ID")
-        expected_ids.add(row["id"])
-    if len(expected_ids) != expected:
-        raise ValueError("Signal seed definition manifest contains duplicate IDs")
+    rows = seed_definitions()
+    expected_ids = {row["id"] for row in rows}
+    expected = len(rows)
     with connect() as db:
         present_ids = {row[0] for row in db.execute("SELECT id FROM signal_definitions")}
     present_ids.intersection_update(expected_ids)

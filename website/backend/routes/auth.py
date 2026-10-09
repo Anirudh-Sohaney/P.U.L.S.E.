@@ -136,6 +136,22 @@ def _hash_password(password: str) -> str:
     return PASSWORD_HASHER.hash(password)
 
 
+def reset_account_password(username: str, password: str) -> int:
+    """Reset an account locally and revoke every active session for it."""
+    Registration(username=username, password=password)
+    password_hash = _hash_password(password)
+    with _connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        updated = connection.execute("UPDATE accounts SET password_hash=? WHERE username=?",
+                                     (password_hash, username)).rowcount
+        if not updated:
+            raise LookupError("Account does not exist")
+        revoked = connection.execute("DELETE FROM sessions WHERE username=?",
+                                     (username,)).rowcount
+        connection.execute("DELETE FROM login_attempts WHERE username=?", (username,))
+    return revoked
+
+
 def _client_ip(request: Request) -> str:
     peer = request.client.host if request.client else "unknown"
     trusted = peer in settings.TRUSTED_PROXY_IPS

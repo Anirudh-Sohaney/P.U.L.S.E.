@@ -88,7 +88,10 @@ def verify_backup(directory: Path) -> dict:
             raise ValueError("Backup CMS manifest checksum does not match its source")
     for name in DATABASES:
         path = directory / name
-        with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as db:
+        # Snapshots are closed, immutable copies produced through SQLite's
+        # backup API. Avoid opening them in WAL mode, which creates untracked
+        # -wal/-shm sidecars during every health check.
+        with closing(sqlite3.connect(f"file:{path}?mode=ro&immutable=1", uri=True)) as db:
             if db.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                 raise ValueError(f"Backup SQLite integrity check failed: {name}")
             if name == "signals.sqlite3":

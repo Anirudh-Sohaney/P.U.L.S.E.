@@ -58,6 +58,31 @@ def _evidence_row(row: dict, source_name: str, fetched_at: str) -> tuple:
             fields["matched_terms"], fields["summary_text"])
 
 
+def _refresh_error(exc: Exception, failed_at: datetime) -> str:
+    """Keep a server-provided 429 retry deadline with the failed source run."""
+    message = str(exc)[:400]
+    if not isinstance(exc, HTTPError) or exc.code != 429 or exc.headers is None:
+        return message[:500]
+    retry_after = exc.headers.get("Retry-After")
+    if not retry_after:
+        return message[:500]
+    retry_at = None
+    try:
+        retry_at = failed_at + timedelta(seconds=max(0, int(retry_after)))
+    except (ValueError, OverflowError):
+        try:
+            retry_at = parsedate_to_datetime(retry_after)
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=timezone.utc)
+            retry_at = retry_at.astimezone(timezone.utc)
+        except (TypeError, ValueError, OverflowError):
+            pass
+    if retry_at is None:
+        return message[:500]
+    marker = f" [retry_after_until={retry_at.isoformat()}]"
+    return f"{message[:500 - len(marker)]}{marker}"
+
+
 def _gdelt_articles(start: datetime, end: datetime, *, timeout: int) -> list[dict]:
     params = urlencode({"query": NEWS_QUERY, "mode": "artlist", "format": "json",
                         "startdatetime": start.strftime("%Y%m%d%H%M%S"),
@@ -376,10 +401,12 @@ def refresh_news(sources: tuple[str, ...] | None = None) -> dict:
                             "fetched": len(articles), "rows_written": written,
                             "evidence_added": evidence_added})
         except Exception as exc:
+            failed_at = datetime.now(timezone.utc)
+            error = _refresh_error(exc, failed_at)
             with connect() as db:
                 db.execute("""UPDATE refresh_runs SET finished_at=?, status='failed', error=?
-                    WHERE id=?""", (datetime.now(timezone.utc).isoformat(), str(exc)[:500], run_id))
-            results.append({"source": source_name, "status": "failed", "error": str(exc)[:500]})
+                    WHERE id=?""", (failed_at.isoformat(), error, run_id))
+            results.append({"source": source_name, "status": "failed", "error": error})
     if all(result["status"] == "failed" for result in results):
         failures = "; ".join(f"{result['source']}: {result['error']}" for result in results)
         raise RuntimeError(f"All public news sources failed: {failures}")

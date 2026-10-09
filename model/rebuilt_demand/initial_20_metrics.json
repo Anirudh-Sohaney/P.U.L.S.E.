@@ -1,0 +1,138 @@
+{
+  "classification": "temporal replacement trained on archived outputs; not recovered article-to-signal model",
+  "source_rows": 97,
+  "source_date_range": [
+    "2018-01-01",
+    "2026-01-01"
+  ],
+  "holdout_rows": 20,
+  "holdout_start": "2024-06-01",
+  "signal_count": 20,
+  "signal_ids": [
+    "arkansas_anti_infective_disruption",
+    "arkansas_anti_infective_supply_chain",
+    "arkansas_anti_infective_supply_policy_pressure",
+    "arkansas_anti_infective_supply_disruption",
+    "arkansas_anti_infective_national_supply",
+    "arkansas_anesthesia_disruption",
+    "arkansas_anesthesia_policy",
+    "arkansas_anesthesia_supply_chain",
+    "arkansas_antiinfective_anesthesia_supply",
+    "arkansas_anti_infective_national_policy",
+    "arkansas_opioid_policy",
+    "arkansas_opioid_demand",
+    "arkansas_anti_infective_anesthesia_policy",
+    "arkansas_anti_infective_national_demand",
+    "arkansas_anti_infective_composite_burden",
+    "national_policy_risk",
+    "national_demand_risk",
+    "national_supply_chain_risk",
+    "national_policy_direction",
+    "national_supply_stage_direction"
+  ],
+  "mean_xgb_mae": 6.377147262602811,
+  "mean_persistence_mae": 8.930000000000001,
+  "per_signal": {
+    "arkansas_anti_infective_disruption": {
+      "test_rows": 20,
+      "xgb_mae": 6.02289092540741,
+      "persistence_mae": 6.55
+    },
+    "arkansas_anti_infective_supply_chain": {
+      "test_rows": 20,
+      "xgb_mae": 5.113945335149765,
+      "persistence_mae": 7.75
+    },
+    "arkansas_anti_infective_supply_policy_pressure": {
+      "test_rows": 20,
+      "xgb_mae": 5.315308177471161,
+      "persistence_mae": 8.05
+    },
+    "arkansas_anti_infective_supply_disruption": {
+      "test_rows": 20,
+      "xgb_mae": 10.567139840126037,
+      "persistence_mae": 14.0
+    },
+    "arkansas_anti_infective_national_supply": {
+      "test_rows": 20,
+      "xgb_mae": 13.703516912460326,
+      "persistence_mae": 23.05
+    },
+    "arkansas_anesthesia_disruption": {
+      "test_rows": 20,
+      "xgb_mae": 4.610658895969391,
+      "persistence_mae": 6.7
+    },
+    "arkansas_anesthesia_policy": {
+      "test_rows": 20,
+      "xgb_mae": 0.3194073077989742,
+      "persistence_mae": 0.5
+    },
+    "arkansas_anesthesia_supply_chain": {
+      "test_rows": 20,
+      "xgb_mae": 3.5924267694354057,
+      "persistence_mae": 5.85
+    },
+    "arkansas_antiinfective_anesthesia_supply": {
+      "test_rows": 20,
+      "xgb_mae": 8.696734547615051,
+      "persistence_mae": 13.45
+    },
+    "arkansas_anti_infective_national_policy": {
+      "test_rows": 20,
+      "xgb_mae": 7.634052419662476,
+      "persistence_mae": 9.9
+    },
+    "arkansas_opioid_policy": {
+      "test_rows": 20,
+      "xgb_mae": 4.570333862304688,
+      "persistence_mae": 4.15
+    },
+    "arkansas_opioid_demand": {
+      "test_rows": 20,
+      "xgb_mae": 2.9668974339962007,
+      "persistence_mae": 3.3
+    },
+    "arkansas_anti_infective_anesthesia_policy": {
+      "test_rows": 20,
+      "xgb_mae": 5.373092871904373,
+      "persistence_mae": 7.9
+    },
+    "arkansas_anti_infective_national_demand": {
+      "test_rows": 20,
+      "xgb_mae": 6.8061538457870485,
+      "persistence_mae": 9.45
+    },
+    "arkansas_anti_infective_composite_burden": {
+      "test_rows": 20,
+      "xgb_mae": 10.882094883918763,
+      "persistence_mae": 14.2
+    },
+    "national_policy_risk": {
+      "test_rows": 20,
+      "xgb_mae": 4.5604037046432495,
+      "persistence_mae": 4.45
+    },
+    "national_demand_risk": {
+      "test_rows": 20,
+      "xgb_mae": 2.984236514568329,
+      "persistence_mae": 3.3
+    },
+    "national_supply_chain_risk": {
+      "test_rows": 20,
+      "xgb_mae": 9.631623649597168,
+      "persistence_mae": 15.8
+    },
+    "national_policy_direction": {
+      "test_rows": 20,
+      "xgb_mae": 4.5604037046432495,
+      "persistence_mae": 4.45
+    },
+    "national_supply_stage_direction": {
+      "test_rows": 20,
+      "xgb_mae": 9.631623649597168,
+      "persistence_mae": 15.8
+    }
+  },
+  "next_month_output": "/root/projects/PULSE/model/rebuilt_demand/models/initial_20_signals/next_month_20_signals.csv"
+}

@@ -47,6 +47,15 @@ def catalog(search: str = Query("", max_length=120), limit: int = Query(1500, ge
             "note": "State values are ordinal categories, not medication units or purchase quantities."}
 
 
+@router.get("/catalog/seed")
+def seed_catalog():
+    """Return exactly the 1,312 stable definitions in the checked-in seed manifest."""
+    rows = signal_store.seed_definitions()
+    return {"signals": rows, "count": len(rows),
+            "source": "checked_in_seed_manifest",
+            "note": "Definitions only; retrieve dated observations with /latest or /history."}
+
+
 @router.post("/latest")
 def latest(query: LatestQuery):
     """Return usable values and the absolute latest recorded row for each ID."""

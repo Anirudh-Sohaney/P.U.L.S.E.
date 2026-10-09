@@ -1,0 +1,31 @@
+drug_name,forecast_origin,target_window_start,target_window_end,predicted_units_next_14d,model_configuration,evidence_status
+Acetaminophen 500 mg tablet,2025-12-31,2026-01-01,2026-01-14,189.9166717529297,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Albuterol HFA inhaler,2025-12-31,2026-01-01,2026-01-14,92.29808807373047,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Amlodipine 5 mg tablet,2025-12-31,2026-01-01,2026-01-14,88.45207977294922,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Amoxicillin 500 mg capsule,2025-12-31,2026-01-01,2026-01-14,133.54617309570312,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Amoxicillin-clavulanate 875/125 mg tablet,2025-12-31,2026-01-01,2026-01-14,67.77391815185547,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Atorvastatin 20 mg tablet,2025-12-31,2026-01-01,2026-01-14,88.25714111328125,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Azithromycin 250 mg tablet,2025-12-31,2026-01-01,2026-01-14,64.25079345703125,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Cephalexin 500 mg capsule,2025-12-31,2026-01-01,2026-01-14,59.1039924621582,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Cetirizine 10 mg tablet,2025-12-31,2026-01-01,2026-01-14,52.75178527832031,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Doxycycline 100 mg capsule,2025-12-31,2026-01-01,2026-01-14,66.77076721191406,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Famotidine 20 mg tablet,2025-12-31,2026-01-01,2026-01-14,39.27995681762695,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Fluticasone nasal spray,2025-12-31,2026-01-01,2026-01-14,40.416526794433594,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Gabapentin 300 mg capsule,2025-12-31,2026-01-01,2026-01-14,54.00461196899414,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Glipizide 5 mg tablet,2025-12-31,2026-01-01,2026-01-14,32.591552734375,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Hydrochlorothiazide 25 mg tablet,2025-12-31,2026-01-01,2026-01-14,60.91499710083008,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Ibuprofen 200 mg tablet,2025-12-31,2026-01-01,2026-01-14,145.2566680908203,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Insulin glargine 100 units/mL pen,2025-12-31,2026-01-01,2026-01-14,13.255256652832031,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Levothyroxine 50 mcg tablet,2025-12-31,2026-01-01,2026-01-14,66.60330963134766,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Lisinopril 10 mg tablet,2025-12-31,2026-01-01,2026-01-14,92.43180847167969,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Losartan 50 mg tablet,2025-12-31,2026-01-01,2026-01-14,66.55455017089844,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Metformin 500 mg tablet,2025-12-31,2026-01-01,2026-01-14,103.16091918945312,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Naloxone 4 mg nasal spray,2025-12-31,2026-01-01,2026-01-14,4.963171005249023,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Naproxen 500 mg tablet,2025-12-31,2026-01-01,2026-01-14,58.27663803100586,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Nirmatrelvir/ritonavir 300/100 mg pack,2025-12-31,2026-01-01,2026-01-14,6.9002180099487305,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Omeprazole 20 mg capsule,2025-12-31,2026-01-01,2026-01-14,74.2069320678711,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Oseltamivir 75 mg capsule,2025-12-31,2026-01-01,2026-01-14,9.926671028137207,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Prednisone 20 mg tablet,2025-12-31,2026-01-01,2026-01-14,55.65196228027344,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Semaglutide 0.25/0.5 mg pen,2025-12-31,2026-01-01,2026-01-14,1.7654765844345093,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Sertraline 50 mg tablet,2025-12-31,2026-01-01,2026-01-14,57.91269302368164,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
+Simvastatin 40 mg tablet,2025-12-31,2026-01-01,2026-01-14,32.429901123046875,top5_all_lag1__shallow_poisson,synthetic_benchmark_model; not validated on observed pharmacy sales
