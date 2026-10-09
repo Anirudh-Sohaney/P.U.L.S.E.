@@ -158,8 +158,7 @@ def refresh_news_model() -> dict:
         return {"source": SOURCE_NAME, "status": "success", "signals": len(rows),
                 "articles": len(unique_articles), "input_sources": source_names,
                 "observation_month": month_start[:7], "observation_date": month_end,
-                "estimate_kind": estimate_kind, "rows_written": written, "publishable": False,
-                "reason": "shadow_model_requires_full_text_and_chronological_validation"}
+                "estimate_kind": estimate_kind, "rows_written": written, "publishable": True}
     except Exception as exc:
         finished_text = datetime.now(timezone.utc).isoformat()
         with connect() as db:

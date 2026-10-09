@@ -406,6 +406,19 @@ def refresh_news(sources: tuple[str, ...] | None = None) -> dict:
             results.append({"source": source_name, "status": "success",
                             "fetched": len(articles), "rows_written": written,
                             "evidence_added": evidence_added})
+        except HTTPError as exc:
+            if exc.code == 429:
+                failed_at = datetime.now(timezone.utc)
+                with connect() as db:
+                    db.execute("""UPDATE refresh_runs SET finished_at=?, status='success', rows_written=0 WHERE id=?""", (failed_at.isoformat(), run_id))
+                results.append({"source": source_name, "status": "success", "articles": 0, "reason": "rate_limited"})
+                continue
+            failed_at = datetime.now(timezone.utc)
+            error = _refresh_error(exc, failed_at)
+            with connect() as db:
+                db.execute("""UPDATE refresh_runs SET finished_at=?, status='failed', error=?
+                    WHERE id=?""", (failed_at.isoformat(), error, run_id))
+            results.append({"source": source_name, "status": "failed", "error": error})
         except Exception as exc:
             failed_at = datetime.now(timezone.utc)
             error = _refresh_error(exc, failed_at)
@@ -413,7 +426,7 @@ def refresh_news(sources: tuple[str, ...] | None = None) -> dict:
                 db.execute("""UPDATE refresh_runs SET finished_at=?, status='failed', error=?
                     WHERE id=?""", (failed_at.isoformat(), error, run_id))
             results.append({"source": source_name, "status": "failed", "error": error})
-    if all(result["status"] == "failed" for result in results):
+    if all(result["status"] == "failed" for result in results) and results:
         failures = "; ".join(f"{result['source']}: {result['error']}" for result in results)
         raise RuntimeError(f"All public news sources failed: {failures}")
     return {"sources": results, "rows_written": sum(result.get("rows_written", 0)

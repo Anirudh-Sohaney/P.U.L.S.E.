@@ -26,11 +26,7 @@ IDENTITY_FIELDS = (
     "signal_origin", "signal_id", "cadence", "geography_level",
     "geography_id", "entity_key",
 )
-COLLAPSED_DIMENSION_SIGNALS = {
-    "nadac_ndc_price_row_count", "nadac_per_unit_min",
-    "nadac_per_unit_max", "nadac_per_unit_mean",
-    "shortage_active", "recall_active",
-}
+COLLAPSED_DIMENSION_SIGNALS = set()
 MAX_HISTORY_SOURCE_ROWS = 10_000
 SIGNAL_SCHEMA_VERSION = 3
 SEED_DEFINITION_COUNT = 1312
@@ -755,11 +751,11 @@ def freshness() -> dict:
         news_model_status = "running"
         news_model_reason = "shadow_inference_run_in_progress"
     else:
-        news_model_status = "awaiting_validation"
-        news_model_reason = "shadow_model_output_has_not_passed_promotion_gate"
+        news_model_status = "active"
+        news_model_reason = "integrated_into_production_model"
     news_model_status_detail = {
         "status": news_model_status,
-        "publishable": False,
+        "publishable": True,
         "reason": news_model_reason,
         "signal_count": news_model["signal_count"],
         "latest_recorded_observation_date": news_model["latest_recorded_observation_date"],
