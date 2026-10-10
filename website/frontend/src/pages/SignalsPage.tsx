@@ -61,7 +61,7 @@ export default function SignalsPage() {
         const cat = await apiFetch(`/v1/signals/catalog?search=${encodeURIComponent(committedSearch)}&limit=1500`)
         if (!active || currentRequest !== requestNumber) return
         
-        const demandSignals = cat.signals.filter((s: any) => s.signal_origin === 'cms_partd_two_year_persistence_v2')
+        const demandSignals = cat.signals.filter((s: any) => s.signal_origin === 'derived_demand_output')
         if (demandSignals.length === 0) {
             setMarket({ drugs: [], count: 0, total: 0, filtered_total: 0, meaning: 'No drugs match this search.' })
             setError('')
@@ -97,7 +97,7 @@ export default function SignalsPage() {
                 demand_state: val ? val.value : 0,
                 observed_claims: 0,
                 observation_date: val ? val.observation_date : '',
-                forecast_horizon: val ? String(parseInt(val.observation_date.slice(0, 4)) + 2) : '',
+                forecast_horizon: val ? (val.forecast_horizon || String(parseInt(val.observation_date.slice(0, 4)) + 1)) : '',
                 state_definition: s.state_definition
             }
         })
@@ -112,7 +112,8 @@ export default function SignalsPage() {
             count: pagedDrugs.length,
             total: cat.count,
             filtered_total: filteredTotal,
-            meaning: ''
+            meaning: '',
+            target_year: allDrugs.length > 0 ? Number(allDrugs[0].forecast_horizon) : undefined
         })
         setError('')
       } catch (err) {
