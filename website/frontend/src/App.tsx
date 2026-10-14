@@ -3,8 +3,6 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout'
 
 const LandingPage = lazy(() => import('./pages/LandingPage'))
-const AccessPage = lazy(() => import('./pages/AccessPage'))
-const PlanningDemo = lazy(() => import('./pages/PlanningDashboard'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const SignalsPage = lazy(() => import('./pages/SignalsPage'))
 const ApiGuide = lazy(() => import('./pages/ApiGuide'))
@@ -15,10 +13,7 @@ function App() {
       <Router>
         <Routes>
           <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<AccessPage mode="login" />} />
-          <Route path="/signup" element={<AccessPage mode="signup" />} />
           <Route element={<Layout />}>
-            <Route path="/demo" element={<PlanningDemo demoOnly />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/signals" element={<SignalsPage />} />
             <Route path="/api-guide" element={<ApiGuide />} />
