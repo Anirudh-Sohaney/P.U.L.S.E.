@@ -85,8 +85,16 @@ the target period.
 | `cms_medicare_quarterly_partd` | latest national Part D claims, spending, beneficiaries | Quarterly snapshot; local file covers 2024 and 2025 Q1-Q3 | national | `NEAR_REAL_TIME_INPUT` context only |
 | `medicaid_sdud` | reimbursed amounts, prescriptions, units, suppressed rows | Quarterly, 2012–2025 locally; CMS annual refresh | state/NDC | `NEAR_REAL_TIME_INPUT` for periodic target refresh only (not a real-time pharmacy feature; publication lag is documented) |
 | `nadac` | per-unit min/mean/max price, row count | Weekly | national | `NEAR_REAL_TIME_INPUT` |
-| `openfda_enforcement` (+ `_recent`) | `recall_active` | Daily/weekly updates | national | `LIVE_INPUT` |
+| `openfda_enforcement` (+ `_recent`) | 30-day published report counts by FDA class; `recall_active` has no verified live lifecycle source | Weekly source update | national | Report counts are live source context; `recall_active` is `PERIODIC_TRAINING_ONLY` until a current-status source is validated |
 | `openfda_shortages` (+ `_recent`) | `shortage_active` | Daily/weekly updates | national | `LIVE_INPUT` |
+
+The FDA enforcement feed includes reports with `Not Yet Classified` and, in
+some cases, no `recall_number`. Drug-level `recall_class1/2/3` features now
+exclude unclassified reports instead of treating them as Class III. The
+locally cached enforcement source has one unclassified report dated 2026;
+the saved training panel ends in 2024, so this correction affects future
+feature builds rather than that panel's historical fit. The published FDA
+`status` is retained as source text and is not a verified active-recall input.
 
 URLs:
 
@@ -130,7 +138,7 @@ URLs:
 
 - EPA AQS annual concentration by monitor: https://aqs.epa.gov/aqsweb/airdata/download_files.html
 - BLS Public Data API v2: https://www.bls.gov/developers/
-- Delphi Epidata FluView: https://cmu-delphi.github.io/delphi-epidata/api/fluview.html
+- Delphi Epidata FluView ILINet V5: https://cmu-delphi.github.io/delphi-epidata/api/v5-signals/fluview_ilinet.html
 - FRED (PPI PCU32543254): https://fred.stlouisfed.org/graph/fredgraph.csv?id=PCU32543254
 - NOAA NCEI Daily Summaries (GHCND): https://www.ncei.noaa.gov/products/land-based-station/global-historical-climatology-network-daily
 - CDC COVID county transmission: https://data.cdc.gov/Public-Health-Surveillance/United-States-COVID-19-County-Level-of-Community-Tran/8396-v7yb
@@ -201,13 +209,53 @@ URLs:
 
 - CDC COVID county transmission: https://data.cdc.gov/Public-Health-Surveillance/United-States-COVID-19-County-Level-of-Community-Tran/8396-v7yb
 - NNDSS Weekly Data: https://data.cdc.gov/NNDSS/NNDSS-Weekly-Data/x9gk-5huc
-- Delphi Epidata FluView: https://cmu-delphi.github.io/delphi-epidata/api/fluview.html
+- Delphi Epidata FluView ILINet V5: https://cmu-delphi.github.io/delphi-epidata/api/v5-signals/fluview_ilinet.html
 - CDC RESP-NET Rates and Clinical Data: https://data.cdc.gov/Public-Health-Surveillance/RESP-NET-Rates-and-Clinical-Data/kvib-3txy
 
 Leakage/staleness: **COVID county series is historical-only (ended 2022-10-18);
 explicitly non-live.** NNDSS and FluView are weekly with ~1–2 week lag; near-real-time.
 
 Disposition: keep COVID for training; NNDSS/FluView/RESP-NET near-real-time.
+The backend now records source-native NNDSS fields `m1`–`m4` separately for six
+saved disease labels and Arkansas/U.S. geography, including CDC row update
+times. The current CDC table uses `US RESIDENTS` in older years and
+`U.S. Residents` in newer years; Arkansas rows in this extract begin in 2025.
+The saved annual builder takes a maximum across four different CDC measures
+and has no release-safe live equivalent yet. These raw source rows do not
+make the 12 saved annual NNDSS features operational.
+The backend captures source-native Arkansas ILI, national ILI, and national
+weighted ILI weekly revisions from V5. The historical Arkansas `wili` column
+equals unweighted `ili` in all 761 local rows; V5 correctly omits state
+weighted ILI. `ar_wili_mean` is therefore not a source-backed live feature and
+the saved annual model needs a reviewed feature change and retraining.
+The national annual builder also groups the legacy file by `issue` year, not
+the observation (`epiweek`) year. For example, all 52 national rows labeled
+`issue` year 2024 cover epidemiological weeks 2022-40 through 2023-39 and
+carry the same 2024-10-04 release date. The saved 2024 national ILI mean from
+those rows is 2.8871%, while the currently captured V5 mean for observation
+year 2024 is 2.7219%. The 2022 comparison differs more (1.3773% versus
+2.9054%). The source's time key and values therefore do not match the saved
+feature contract. The source-native weekly capture is usable as context, but
+all three published FluView annual features need a point-in-time rebuild and
+retraining before they can drive that model. The historical external-feature
+file for the separate Arkansas annual ILI feature is currently only a Git LFS
+pointer in this checkout, so its exact training values cannot be reproduced
+from that file here.
+`fluview_point_in_time.py` now builds a candidate from the captured SQLite
+source rows, requiring publication and recording by the requested cutoff and
+every Saturday observation in the requested calendar year. As of
+2026-10-09 23:00 UTC, its 2025 candidate has 52/52 weeks for each of the three
+published series; the partial 2026 year has 40/52 and yields no annual
+features. An as-of cutoff before the October 9 local capture also yields no
+features, even for 2025. The bridge marks every result model-incompatible
+until a corrected training/evaluation run establishes a new feature contract.
+The backend also records weekly unweighted reporting-site WVAL means and site
+counts for Arkansas and all U.S. sites, across SARS-CoV-2, influenza A, and
+RSV. These six source-derived series are not CDC's official geographic medians.
+The latest Arkansas values each have one reporting site. CDC recalibrated WVAL
+methods and historical values in August 2026 after the saved research file was
+captured; the six saved `ww_*` annual model features require a source-compatible
+rebuild and revalidation before use.
 
 ### economics_us — BLS, FRED, USAspending (9 variables)
 
@@ -417,8 +465,8 @@ cadence. None are currently in the feature store.
 | FDA shortages | https://open.fda.gov/apis/drug/drugshortages/ | Continuous/daily | national (drug-level) | Free | Already in store as `shortage_active`; promote to live refresh. |
 | FDA recalls/enforcement | https://open.fda.gov/apis/drug/enforcement/ | Daily | national (drug-level) | Free | Already in store as `recall_active`; promote to live refresh. |
 | CDC NSSP respiratory (syndromic) | https://www.cdc.gov/nssp/ (BioSense/ESSENCE) | Near-real-time (daily) | State/county (ED visits) | **Access-gated**: state/local health dept approval | Strongest respiratory early signal, but not open download; requires partnership. Mark as candidate with access caveat, not guaranteed free. |
-| CDC wastewater (NWSS) | https://data.cdc.gov/d/atcp-73re (export: https://data.cdc.gov/api/v3/views/atcp-73re/export.csv?accessType=DOWNLOAD) | Weekly, Fridays | Site/state/national | Free, public | WVAL for SARS-CoV-2, Flu A, RSV; already partially in store via `cdc_wastewater_ar_site_weekly`; refresh weekly. |
-| CDC FluView (ILINet) | https://cmu-delphi.github.io/delphi-epidata/api/fluview.html | Weekly | National/state | Free | Already in store via `delphi_fluview`; refresh weekly. |
+| CDC wastewater (NWSS) | https://data.cdc.gov/d/atcp-73re | Weekly, Fridays | Reporting sites | Free, public | Six Arkansas/U.S. unweighted reporting-site means and contributing-site counts now refresh daily in the backend. These are not official geographic medians; the 2026 method revision requires model revalidation. |
+| CDC FluView (ILINet) | https://cmu-delphi.github.io/delphi-epidata/api/v5-signals/fluview_ilinet.html | Weekly | National/state | Free; optional Delphi token for higher limits | Backend now records three source-published weekly series through 2026-10-03. Annual point-in-time model features are still pending; state weighted ILI is not published. |
 | CDC RESP-NET RSV | https://data.cdc.gov/Public-Health-Surveillance/RESP-NET-Rates-and-Clinical-Data/kvib-3txy | Weekly | National RESP-NET aggregate | Free | Integrated via Socrata API; national disease-pressure context only, not Arkansas-local. |
 | BLS | https://api.bls.gov/publicAPI/v2/timeseries/data/ | Monthly (~3-week lag) | State/national | Free, key optional | Already in store; near-real-time with documented lag. |
 | News (GDELT 2.0) | https://www.gdeltproject.org/data.html | 15-minute updates | Global, georeferenced | Free | Replaces/augments local 3DLNews corpus with documented cadence; volume normalization required (coverage grows over time). |

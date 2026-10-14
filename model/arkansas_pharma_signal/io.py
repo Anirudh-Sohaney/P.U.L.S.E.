@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -48,11 +49,23 @@ def write_csv(df: pd.DataFrame, path: Path | str) -> Path:
 
 
 def write_json(obj: Any, path: Path | str) -> Path:
-    """Write JSON with stable key ordering and project-aware type conversion."""
+    """Atomically replace JSON after serialization and disk flush succeed."""
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    with p.open("w") as fh:
-        json.dump(obj, fh, indent=2, sort_keys=True, default=_json_default)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=p.parent,
+            prefix=f".{p.name}.", suffix=".tmp", delete=False,
+        ) as fh:
+            temporary = Path(fh.name)
+            json.dump(obj, fh, indent=2, sort_keys=True, default=_json_default)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(temporary, p)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     return p
 
 

@@ -82,12 +82,12 @@ def test_unverified_who_fields_are_research_only():
         assert is_operational_feature(name) is False
 
 
-def test_canonical_openfda_variables_are_live():
+def test_canonical_openfda_shortage_is_live_but_recall_status_is_not():
     assert disposition_for_variable("shortage_active") == LIVE_INPUT
-    assert disposition_for_variable("recall_active") == LIVE_INPUT
+    assert disposition_for_variable("recall_active") == PERIODIC_TRAINING_ONLY
     audit = audit_operational_sources(["shortage_active", "recall_active"])
     assert audit["all_sources_documented"] is True
-    assert audit["all_adapters_ready"] is True
+    assert audit["all_adapters_ready"] is False
 
 
 def test_source_prefixed_near_real_time_precedence():
@@ -166,11 +166,12 @@ def test_operational_nws_and_nadac_inputs_are_not_training_only():
 def test_source_prefixed_openfda_inputs_are_live():
     for name in [
         "openfda_shortages_shortage_active",
-        "openfda_enforcement_recall_active",
         "openfda_shortages_recent_shortage_active",
     ]:
         assert disposition_for_variable(name) == LIVE_INPUT
         assert is_operational_feature(name) is True
+    assert disposition_for_variable("openfda_enforcement_recall_active") == PERIODIC_TRAINING_ONLY
+    assert is_operational_feature("openfda_enforcement_recall_active") is False
 
 
 def test_empty_name_fail_closed():
@@ -306,10 +307,13 @@ def test_forecast_input_contract_fallback_mixed():
     assert contract["periodic_training_only_count"] == 1
 
 
-def test_forecast_input_contract_uses_saved():
+def test_forecast_input_contract_rechecks_saved_features():
     saved = summarize_dispositions(["shortage_active"])
     trained = {"input_contract": saved, "demand_claims": {"feature_cols": ["cms_fills"]}}
-    assert forecast_input_contract(trained) is saved
+    contract = forecast_input_contract(trained)
+    assert contract["saved_contract_operational_ready"] is True
+    assert contract["operational_ready"] is False
+    assert contract["readiness_reason"] == "current_source_or_feature_gate_failed"
 
 
 def test_forecast_input_contract_fallback():
@@ -324,7 +328,8 @@ def test_forecast_input_contract_fallback():
 def test_forecast_input_contract_fallback_empty():
     contract = forecast_input_contract({})
     assert contract["periodic_training_only_count"] == 0
-    assert contract["operational_ready"] is True
+    assert contract["operational_ready"] is False
+    assert contract["readiness_reason"] == "missing_trained_feature_columns"
     assert contract["rows"] == []
 
 

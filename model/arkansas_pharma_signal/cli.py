@@ -8,6 +8,7 @@ Example::
 from __future__ import annotations
 
 import argparse
+import hashlib
 from datetime import date
 import sys
 from pathlib import Path
@@ -22,6 +23,8 @@ from .datasets import ablation_features, build_next_period, feature_columns_for_
 from .evaluate import (
     _fit_ridge_log,
     _neural_subsample,
+    _ridge_log_predict,
+    _select_raw_blend_weight,
     _simplex_weights,
     _select_binary_threshold,
     evaluate_demand_rolling,
@@ -120,7 +123,8 @@ def _parse_args(argv: List[str]) -> argparse.Namespace:
     p_fc = sub.add_parser("forecast", help="Write forecast grid (>=100 rows).")
     p_fc.add_argument("--max-rows", type=int, default=10000,
                       help="Row budget; 50000 scales coverage across more city-drugs.")
-    p_fc.add_argument("--forecast-years", type=int, default=2)
+    p_fc.add_argument("--forecast-years", type=int, default=1,
+                      help="Annual model supports one next-year forecast only.")
     p_fc.add_argument(
         "--allow-training-only-features", action="store_true",
         help="Permit forecasting with a model trained on periodic/historical-only inputs; "
@@ -338,6 +342,14 @@ def _load_panel(cfg: Config, args: argparse.Namespace, cap: bool = True):
     return panel
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for block in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 def _feature_matrix(view: pd.DataFrame, cols: List[str]) -> np.ndarray:
     return _fill_nan(view[cols].to_numpy(dtype=float))
 
@@ -452,6 +464,8 @@ def cmd_forecast_universal(cfg: Config, args: argparse.Namespace) -> None:
                           "derived_training_variable_count": contract["derived_training_variable_count"],
                           "static_identity_context_count": contract["static_identity_context_count"],
                           "operational_ready": contract["operational_ready"],
+                          "readiness_reason": contract["readiness_reason"],
+                          "saved_contract_operational_ready": contract["saved_contract_operational_ready"],
                       },
                       allow_training_only_features=bool(args.allow_training_only_features),
                       forecast_mode=("research_training_only" if args.allow_training_only_features
@@ -771,7 +785,13 @@ def cmd_evaluate_county_demand(cfg: Config, args: argparse.Namespace) -> None:
 
 def cmd_train(cfg: Config, args: argparse.Namespace) -> None:
     panel = _load_panel(cfg, args)
-    view, spec = build_next_period(panel)
+    # The last observed panel year supplies next-period labels for the final
+    # feature year. Freeze identity categories before that validation year.
+    calibration_year = int(panel["year"].max()) - 1
+    view, spec = build_next_period(
+        panel, fit_mask=panel["year"].astype(int) < calibration_year)
+    if view.empty or int(view["year"].max()) != calibration_year:
+        raise ValueError("latest panel years lack consecutive next-period training rows")
     feature_mode = ("full" if args.include_periodic_training_features
                     else "operational")
     full_cols = feature_columns_for_mode(view, feature_mode)
@@ -822,13 +842,14 @@ def cmd_train(cfg: Config, args: argparse.Namespace) -> None:
         X_all[idx], y_log.reshape(-1, 1), full_cols)
 
     # Ensemble weights from a strict last-year validation fold.
-    val_year = int(view["year"].max())
+    val_year = calibration_year
     train_fold = view[view["year"] < val_year]
     val_fold = view[view["year"] == val_year]
     X_tr = _feature_matrix(train_fold, full_cols)
     X_va = _feature_matrix(val_fold, full_cols)
     m_fold = _fit_ridge_log(X_tr, train_fold["demand_claims_t1"].to_numpy(dtype=float),
-                            full_cols, sample_weight=train_fold["y_last"].to_numpy(dtype=float))
+                            full_cols, alpha=0.01,
+                            sample_weight=train_fold["y_last"].to_numpy(dtype=float))
     n_cap = min(len(X_tr), 120_000)
     y_fold = np.log1p(np.clip(
         train_fold["demand_claims_t1"].to_numpy(dtype=float)[:n_cap], 0, None))
@@ -842,18 +863,13 @@ def cmd_train(cfg: Config, args: argparse.Namespace) -> None:
     weights = _simplex_weights(
         comp_val, np.log1p(np.clip(val_fold["demand_claims_t1"].to_numpy(dtype=float), 0, None)))
 
-    ridge_val_raw = np.expm1(claims_model.predict(X_va))
+    # Calibrate only on predictions from the prior-years fit. The saved ridge
+    # above has already seen these validation labels and cannot select a weight.
+    ridge_val_raw = _ridge_log_predict(m_fold, X_va)
     y_val_raw = val_fold["demand_claims_t1"].to_numpy(dtype=float)
     last_val_raw = val_fold["y_last"].to_numpy(dtype=float)
-    best_blend = 0.0
-    best_blend_wape = float("inf")
-    for w in np.linspace(0.0, 1.0, 21):
-        pred = (1.0 - w) * last_val_raw + w * ridge_val_raw
-        wape = float(np.sum(np.abs(y_val_raw - pred)) /
-                     max(np.sum(np.abs(y_val_raw)), 1e-9))
-        if wape < best_blend_wape:
-            best_blend = float(w)
-            best_blend_wape = wape
+    best_blend, best_blend_wape = _select_raw_blend_weight(
+        y_val_raw, last_val_raw, ridge_val_raw)
 
     trained = {
         "demand_claims": {
@@ -889,12 +905,23 @@ def cmd_train(cfg: Config, args: argparse.Namespace) -> None:
             "members": ["city_drug_last", "ridge_full_alpha_0.01"],
             "blend_weight": best_blend,
             "validation_wape": best_blend_wape,
+            "calibration_train_end_year": int(train_fold["year"].max()),
+            "calibration_validation_year": val_year,
+            "calibration_fit_scope": "prior_feature_years_only",
             "ridge_alpha": 0.01,
         },
         "encoder_spec": spec,
         "input_contract": feature_audit,
         "feature_mode": feature_mode,
         "excluded_periodic_feature_count": excluded_periodic_feature_count,
+        "training_panel": {
+            "sha256": (_sha256_file(cfg.panel_dir / "panel.csv")
+                       if not args.max_rows else None),
+            "rows": int(len(panel)),
+            "year_start": int(panel["year"].min()),
+            "year_end": int(panel["year"].max()),
+            "row_limit": args.max_rows,
+        },
     }
 
     print(f"feature_mode: {feature_mode} "
@@ -927,13 +954,22 @@ def cmd_train(cfg: Config, args: argparse.Namespace) -> None:
             },
             feature_mode=feature_mode,
             excluded_periodic_feature_count=excluded_periodic_feature_count,
+            training_panel=trained["training_panel"],
         )
         print(f"wrote {out}")
 
 
 def cmd_forecast(cfg: Config, args: argparse.Namespace) -> None:
-    panel = io.load_csv(cfg.panel_dir / "panel.csv")
     trained = io.read_json(cfg.trained_dir / "models.json")
+    panel_path = cfg.panel_dir / "panel.csv"
+    panel_contract = trained.get("training_panel") or {}
+    expected_sha256 = panel_contract.get("sha256")
+    if (not expected_sha256 or panel_contract.get("row_limit") is not None
+            or _sha256_file(panel_path) != expected_sha256):
+        raise RuntimeError(
+            "trained model is not pinned to this complete panel; retrain from "
+            "the current panel before forecasting")
+    panel = io.load_csv(panel_path)
     contract = forecast_input_contract(trained)
     _require_operational_forecast(
         contract, allow_training_only_features=args.allow_training_only_features)
@@ -958,6 +994,8 @@ def cmd_forecast(cfg: Config, args: argparse.Namespace) -> None:
             "derived_training_variable_count": contract["derived_training_variable_count"],
             "static_identity_context_count": contract["static_identity_context_count"],
             "operational_ready": contract["operational_ready"],
+            "readiness_reason": contract["readiness_reason"],
+            "saved_contract_operational_ready": contract["saved_contract_operational_ready"],
         },
         allow_training_only_features=bool(args.allow_training_only_features),
         forecast_mode=("research_training_only" if args.allow_training_only_features
@@ -975,7 +1013,8 @@ def _require_operational_forecast(
     if (not contract.get("operational_ready", False)
             and not allow_training_only_features):
         raise RuntimeError(
-            "trained model contains periodic or historical-only features; "
+            "trained model contains periodic or historical-only features, has no "
+            "trained feature list, or lacks verified live source adapters; "
             "retrain without --include-periodic-training-features or pass "
             "--allow-training-only-features for an explicitly non-operational forecast")
 

@@ -1,29 +1,21 @@
-"""
-Production Pipeline for Unified Medical Demand Prediction
+"""Historical research fits for the legacy news/ATC/CMS signal bundle.
 
-This script trains and executes the final production models on all available 
-historical data (merging train + test periods) and generates predictions for:
-1. 20 News-based Systemic Signals
-2. 1,368 CMS Part D Annual Drug Signals
-3. 18 Arkansas ATC Monthly Therapeutic Signals
-
-REQUIRED APIs / DATA INPUTS for Real-time execution:
-- NEWS_API_KEY: A key for a news aggregation service (e.g. GDELT, NewsAPI).
-- CMS Open Data: https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers
-- HHS Open Data: https://opendata.hhs.gov/api/v1/datasets/medicaid-provider-spending-ndc/
-- NLM RxNav: https://rxnav.nlm.nih.gov/REST/
+This script has no current news-model runner or validated live ATC feature
+vector. It must not emit a production forecast or overwrite the checked-in
+legacy example at ``model/final_predictions.json``.
 """
 
-import os
-import json
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from typing import Optional
 from sklearn.linear_model import LogisticRegression
 import warnings
 
 # Use the internal regression tools
 from arkansas_pharma_signal.regression import LogisticRidge
+from arkansas_pharma_signal.config import Config
+from arkansas_pharma_signal.news_only_adapter import load_news_only_features
 from arkansas_pharma_signal.therapeutic_class_demand import build_therapeutic_class_panel
 from arkansas_pharma_signal.regional_demand_state import FEATURES, build_state_demand_view
 
@@ -35,12 +27,10 @@ ARKANSAS_QUALIFIED_ATC = [
     "A06", "V03", "C02", "M03", "D01", "L01", "C03", "N07", "D10", "V04"
 ]
 
-def fetch_live_news_signals(api_key: str):
-    if not api_key:
-        print("[WARNING] No NEWS_API_KEY provided. Using offline historical data.")
-    root = Path(__file__).resolve().parent.parent
-    path = root / "existing_models/news_signal_model/data/derived/signals_monthly.csv"
-    news = pd.read_csv(path)
+def load_historical_news_signals(root_dir: Optional[Path] = None):
+    """Load the bundled dated 20-signal table for historical research fits."""
+    root = Path(root_dir or Path(__file__).resolve().parent.parent).expanduser().resolve()
+    news = load_news_only_features(Config(root=str(root)))
     news["month"] = pd.to_datetime(news["date"]).dt.to_period("M")
     return news
 
@@ -55,14 +45,14 @@ class ProductionModel:
         self.cms_models = {}
         
     def train(self):
-        print("--- Initiating Full Production Training on all historical data ---")
+        print("--- Fitting legacy historical models for research only ---")
         self._train_news_pipeline()
         self._train_arkansas_pipeline()
         self._train_cms_pipeline()
         print("--- Training Complete ---")
 
     def _train_news_pipeline(self):
-        self.news = fetch_live_news_signals(os.environ.get("NEWS_API_KEY"))
+        self.news = load_historical_news_signals(self.root)
         self.news_features = [c for c in self.news.columns if c not in ["date", "month"]]
         print(f"Loaded 20 base News Signals: {len(self.news)} historical months.")
 
@@ -124,7 +114,7 @@ class ProductionModel:
         print(f"Successfully trained {len(self.arkansas_models)} Arkansas ATC models.")
 
     def _train_cms_pipeline(self):
-        print("Training 1,368 CMS Part D Annual Drug Models...")
+        print("Training shared CMS Part D five-state demand heads...")
         demand_source = self.root / "data/targeted_additions/cms_partd_geography_drug/data/arkansas_partd_geography_drug_by_year.csv.gz"
         if not demand_source.exists():
             print("[WARNING] CMS Data not found locally. Please fetch using API.")
@@ -159,11 +149,14 @@ class ProductionModel:
         
         print(f"Successfully trained CMS Part D 5-state predictive ensemble for {view['drug_key'].nunique()} drugs.")
 
-    def predict(self) -> dict:
+    def predict(self, live_news: dict = None) -> dict:
         print("--- Generating Production Signals ---")
         
         # 1. 20 News Signals (Latest Month)
-        latest_news = self.news.iloc[-1]
+        if live_news:
+            latest_news = pd.Series(live_news)
+        else:
+            latest_news = self.news.iloc[-1]
         news_payload = {f: float(latest_news[f]) for f in self.news_features}
         
         # 2. 18 Arkansas ATC Signals (Predicting Next Month)
@@ -209,6 +202,8 @@ class ProductionModel:
         return final_payload
 
 if __name__ == "__main__":
+    import json
+    import os
     root_dir = Path(__file__).resolve().parent.parent
     prod_model = ProductionModel(root_dir)
     prod_model.train()

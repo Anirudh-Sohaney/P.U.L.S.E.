@@ -1,0 +1,16 @@
+[Unit]
+Description=PULSE local built frontend preview
+After=pulse-api.service
+
+[Service]
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+Type=simple
+WorkingDirectory=/root/projects/PULSE/website/frontend
+ExecStart=/usr/bin/npm run preview -- --host 127.0.0.1 --port 3141
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

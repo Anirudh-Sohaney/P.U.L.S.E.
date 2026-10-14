@@ -1,5 +1,11 @@
 # Goal Completion: 10-20 Monthly Signals for Arkansas Drug/Disease Demand
 
+> Historical research report. The current production audit does not accept
+> these 18 ATC outputs as live signals: their original evaluator script and
+> news-model runner are absent, and the checked-in metric audit rejects the
+> broader universal forecast for publication. See `PART_A_STATUS.md` and
+> `website/PRODUCTION_READINESS.md` for current evidence and limits.
+
 ## Objective
 The goal was to generate 10-20 signals for either drugs or diseases, representing demand or diagnosis rates at a **monthly** cadence, achieving **>75% accuracy** for categorical state predictions (>2 states). The signals had to be localized to Arkansas and heavily rely on the 20 existing news signals as inputs, combined with historical data.
 
@@ -44,4 +50,3 @@ The model successfully extracted **18 highly qualified monthly signals** corresp
 
 The serialized results and evaluation metrics are published cleanly to `model/artifacts/evaluation/goal_atc_news_signals.json`.
 The code used for the prediction can be audited at `model/scripts/goal_evaluate_atc_news.py`.
-

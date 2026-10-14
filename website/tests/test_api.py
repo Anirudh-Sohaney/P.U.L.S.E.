@@ -10,6 +10,7 @@ from backend.config import settings
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "DATA_PATH", str(tmp_path / "data"))
+    monkeypatch.setattr(settings, "ENABLE_LEGACY_SERVER_TRAINING", True)
     return TestClient(create_app())
 
 
@@ -23,7 +24,8 @@ def test_registration_login_and_account_status(client):
     account = {"username": "pharmacy_one", "password": "secure-password-123"}
     registered = client.post("/api/auth/register", json=account)
     assert registered.status_code == 201
-    assert registered.json()["token_type"] == "bearer"
+    assert registered.json()["username"] == account["username"]
+    assert "access_token" not in registered.json()
     assert client.post("/api/auth/register", json=account).status_code == 409
 
     bad_login = client.post("/api/auth/token", data={"username": account["username"], "password": "wrong-password"})

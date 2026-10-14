@@ -1,60 +1,62 @@
 # Pulse — Pharmacy Demand and Replenishment Demo
 
-A per-account demonstration of demand forecasting and inventory replenishment planning, with **XGBoost as the numerical prediction model**.
+A per-account demonstration of pharmaceutical demand forecasting and inventory replenishment planning.
 
-> **Development status:** Scientific proof-of-concept. Upload only synthetic or appropriately de-identified data; this is not an operational pharmacy system.
+> **Development status:** Scientific proof-of-concept. The system generates demand signals using historical data and live news feeds. It is not an operational pharmacy system.
 
-## Demo scope
-
-- Train one direct next-14-day XGBoost model per medication from prior daily sales, matching the selected `/test/` benchmark architecture.
-- Use the full frozen catalog of 1,312 candidate signals, selecting five per drug on training-period absolute correlation.
-- Supply each selected signal at 1-, 7-, and 14-day lags only after its source period closes.
-- Pair the forecast with the account's latest uploaded on-hand inventory to demonstrate stockout timing and replenishment math.
-- Keep the sales, inventory, forecast, and evaluation assumptions auditable.
+The application serves predictive signals driven by an integrated `ProductionModel`. The system consists of a FastAPI backend that runs a 24/7 background worker. The worker periodically fetches live news data, combines it with historical data, and generates predictive signals for 1300+ CMS Part D drugs and 18 ATC classes.
 
 ## Repository Structure
 
 ```text
 website/
-├── backend/              # API/server (Python)
+├── backend/              # API/server (Python) and background worker
 ├── frontend/             # Web UI (React/TypeScript)
-├── ml/                   # Data/feature/model pipeline (XGBoost)
 ├── data/                 # Local development data
-├── tests/                # Automated tests
-├── scripts/              # Utility and debug scripts
-├── docs.md               # Full project specifications
-├── .env.example          # Environment-variable template
-├── Dockerfile            # Container build
-├── docker-compose.yml    # Multi-service orchestration
-├── Makefile              # Common commands
+├── scripts/              # Utility scripts
 ├── requirements.txt      # Python dependencies
 └── README.md
 ```
 
 ## Quick Start
 
-1. Copy `.env.example` to `.env` and configure secrets.
-2. `docker-compose up` or follow Makefile targets.
-3. Run `make test` to verify the pipeline.
+### 1. Start the API and Worker
 
-## Model Rule
+Set up a virtual environment and install backend dependencies:
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
-XGBoost is the primary numerical prediction model for this project. An LLM may optionally be used later to explain model outputs, summarize evidence, or provide a natural-language interface, but it should not silently replace the validated numerical prediction model.
+Run the backend API:
+```bash
+python -m backend.main
+```
+The API listens on `http://localhost:8000`.
 
-## Demand and inventory demo
+Run the background worker in a separate terminal:
+```bash
+source .venv/bin/activate
+python -m backend.worker
+```
+The worker processes live data, runs the core `ProductionModel`, and writes predictive signals to the local SQLite database.
 
-Create an account, then upload a sales CSV with `date,drug_name,units_sold` and an inventory CSV with `date,drug_name,on_hand_units` (optional `on_order_units`). Sales need at least 130 consecutive daily rows per medication, including zero-sale days. The backend stores uploads, the trained model, and forecasts in that account's directory. The repository's synthetic Arkansas sales CSV can be used for a demo.
+### 2. Start the Frontend
 
-The backend trains a separate XGBoost regressor per drug on the direct total units sold over the next 14 calendar days. It selects up to five signals per drug from 1,312 dated candidates by absolute correlation on training data only, then uses each selected signal's 1-, 7-, and 14-day lags. Historical lag, rolling-statistic, calendar, prior-price, and prior-stockout features and XGBoost parameters match `test/run_publishable_benchmark.py`; price and stockout default to zero if absent in an upload. The 14-day total is allocated across days using recent day-of-week sales so the dashboard can show 1-day and 7-day estimates; those shorter-horizon figures are not separately validated models.
+Navigate to `website/frontend/` and install packages:
+```bash
+npm install
+npm run dev
+```
+Open `http://localhost:5173` to view the UI.
 
-The replenishment policy uses a seven-day lead-time scenario, 28-day trailing demand, and a safety-stock calculation. It is a planning illustration, not a purchasing recommendation.
+## The Production Model
 
-The forecaster joins the long-format catalog at
-`test/test_Signals/signals_2023_2025.csv.gz`, selects five signals separately
-for each drug using training rows only, and applies 1-, 7-, and 14-day lags
-after each source period closes. The catalog has 1,312 unique dated signals,
-including 1,212 derived drug-demand states; its schema and scope are
-documented in that directory's `README.md`.
+The core logic uses a pipeline that:
+1. Gathers 20 point-in-time-safe news features via scheduled scrapes.
+2. Combines them with localized historical data (CMS, Medicaid SDUD).
+3. Evaluates and predicts demand trajectories for 1300+ CMS Part D drugs and 18 specific ATC classes.
 
 ## Safety / Data Rules
 

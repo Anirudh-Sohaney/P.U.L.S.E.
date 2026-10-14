@@ -1,81 +1,81 @@
-# Pulse
+# PULSE
 
-Arkansas-first pharmaceutical forecasting and pharmacy risk prediction
-platform, expanding toward reusable national and global external signals.
+PULSE is a predictive platform for pharmaceutical demand forecasting, generating forward-looking demand signals across CMS Part D and ATC levels.
 
-## Repository Structure
+## Architecture
+
+1. **`website/`** — A FastAPI backend and React frontend. The backend runs a 24/7 background worker (`worker.py`) that periodically captures live news signals and runs the core `ProductionModel`. The frontend provides access to these live signals and predictions.
+2. **`model/`** — The data and research package, which houses the active `ProductionModel` implementation (`model/prod_pipeline.py`). The model combines 20 news signals with historical data to produce predictions for 1300+ CMS Part D drugs and 18 Arkansas ATC classes.
+
+Neither output should be treated as a procurement instruction or clinical decision.
+
+## Repository layout
 
 ```text
-├── model/                  # Arkansas pharmaceutical forecasting (NLP/news signals, demand, shortage)
-│   ├── arkansas_pharma_signal/   # Core model package
-│   ├── scripts/                 # Evaluation and build scripts
-│   ├── tests/                   # Model tests
-│   └── docs/                    # Model documentation
-├── data/                   # Supply/demand data (CMS Part D, FDA recalls, etc.)
-├── website/                # Pharmacy risk prediction web platform
-│   ├── backend/            # Python API
-│   ├── frontend/           # React/TypeScript UI
-│   ├── ml/                 # XGBoost prediction pipeline
-│   ├── data/               # Local dev data
-│   ├── tests/              # Website tests
-│   └── docs.md             # Full specifications
-├── summ.md                 # Project status summary
-├── pytest.ini              # Root test configuration
-└── README.md
+PULSE/
+├── data/                  # Historical and static datasets
+├── test_data/             # Test data
+├── model/                 # Contains the ProductionModel (prod_pipeline.py)
+├── website/               # FastAPI backend, background worker, and React frontend
+└── README.md              # This guide
 ```
 
-## Components
+## Prerequisites
 
-### `model/` — Arkansas-first Pharmaceutical Forecasting
-Multi-layer forecasting stack combining real-world inputs (news, disease
-surveillance, weather, supply-chain signals, drug identity data, distribution,
-trade, and economics) to forecast pharmaceutical demand, supply disruption
-risk, and shortage impact. Arkansas is the primary high-resolution test bed;
-broader signals are retained as contextual inputs. See `summ.md` and
-`model/docs/` for current evidence and limitations.
+- **Python 3.10+** for the API and background worker.
+- **Node.js 20 LTS** for the React frontend.
+- **Git LFS** for downloading necessary model history files.
 
-### `website/` — Demand and replenishment demonstration
-Locked React/Python demonstration that trains chronological per-drug XGBoost forecasts from the reproducible synthetic clinic-sales history, joins only time-safe news signals, and pairs the result with a transparent synthetic on-hand inventory scenario. It displays demand at 1, 4, 7, and 14 days, forecast stockout timing, and demonstration replenishment quantities. See `website/README.md`, `website/docs.md`, and `data/synthetic_pharmacy_data/synthetic_guide.md`.
-
-### `data/` — Supply/Demand Data
-CMS Part D quarterly data, FDA recalls, and other pharmaceutical datasets.
-
-The current repository does not claim direct Arkansas pharmacy inventory truth. The website's on-hand inventory is explicitly synthetic and only demonstrates the connection between forecast demand and replenishment arithmetic. Public targets are proxies unless a source explicitly observes pharmacy fills, stockouts, backorders, or on-hand quantities.
-
-### Synthetic pharmacy benchmark
-
-`data/synthetic_pharmacy_data/` contains a reproducible single-clinic stress
-test, not observed Arkansas pharmacy transactions. Its generator, event tags,
-hashes, and untouched-test evaluation protocol are documented in
-`synthetic_guide.md`, `PROVENANCE.md`, and `benchmark_protocol.md`. Results
-from this artifact must not be generalized to multiple pharmacies without
-multi-site or observed validation.
-
-## Getting Started
-
-### Model
 ```bash
-cd model
-pip install -e .
-python -m arkansas_pharma_signal.cli --help
+git lfs install
+git lfs pull
 ```
 
-### Website
+## Quick Start
+
+### 1. Backend and Worker
+
+The backend serves the API and also runs a 24/7 background worker to gather live news signals and run the ProductionModel.
+
+Install Python dependencies:
 ```bash
 cd website
-cp .env.example .env
-docker-compose up
+python -m venv .venv
+source .venv/bin/activate  # or .\.venv\Scripts\Activate.ps1 on Windows
+pip install -r requirements.txt
 ```
 
-## Testing
-
+Run the API:
 ```bash
-# Model tests
-cd model && pytest
-
-# Website tests
-cd website && pytest
+python -m backend.main
 ```
+The API listens on `http://localhost:8000`.
+
+In a separate terminal, start the 24/7 background worker:
+```bash
+cd website
+source .venv/bin/activate
+python -m backend.worker
+```
+The worker will periodically trigger `refresh_combined_model.py` which trains and runs the `ProductionModel`.
+
+### 2. Frontend
+
+Install Node dependencies and start the React app:
+```bash
+cd website/frontend
+npm install
+npm run dev -- --host 127.0.0.1
+```
+The frontend is available at `http://localhost:5173`.
+
+## The Production Model
+
+The `ProductionModel` (`model/prod_pipeline.py`) is the core engine of PULSE. It works by:
+1. The background worker capturing the latest news signals via `refresh_news_model`.
+2. The worker executing `refresh_combined_model.py`.
+3. Generating predictions for 1300+ CMS Part D drugs (predicting the next year's demand state) and 18 ATC classes (predicting next month's demand state) by combining the live news signals with historical data.
+4. Persisting these predictions as live signals into the SQLite database for the frontend to consume.
 
 ## License
 

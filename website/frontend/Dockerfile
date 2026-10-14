@@ -1,21 +1,12 @@
-FROM node:20-alpine
-
+FROM node:22-alpine AS build
 WORKDIR /app
-
-# Copy package files
-COPY package*.json ./
-
-# Install dependencies
-RUN npm install
-
-# Copy application code
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
-
-# Build for production
 RUN npm run build
 
-# Expose port
-EXPOSE 3000
-
-# Run the application
-CMD ["npm", "run", "preview"]
+FROM nginx:stable-alpine
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY security-headers.conf /etc/nginx/security-headers.inc
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80

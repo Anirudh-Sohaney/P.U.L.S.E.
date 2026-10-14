@@ -28,6 +28,7 @@ def audit_project_status(evaluation_dir: Path, forecast_path: Path) -> dict[str,
     exhaustion = _read(evaluation_dir / "research_exhaustion.json")
     qualified = [row for row in metric.get("candidates", [])
                  if row.get("status") == "qualified_proxy"]
+    qualified_targets = {row.get("metric") for row in qualified if row.get("metric")}
     coverage = metric.get("coverage_gates", {})
     target_validity = metric.get("target_validity", {})
     layered = whole.get("layered_demand", {})
@@ -45,17 +46,22 @@ def audit_project_status(evaluation_dir: Path, forecast_path: Path) -> dict[str,
             "target_promotion_status", "uncertainty_status", "calibration_status",
         ])
         operational_rows = int(len(frame))
+        forecast_targets = set(frame["target"].dropna().astype(str))
+        unexpected_targets = sorted(forecast_targets - qualified_targets)
+        missing_targets = sorted(qualified_targets - forecast_targets)
         keys = ["forecast_period", "target", "geography_level", "geography_id",
                 "county_fips", "drug_key", "therapeutic_class", "labeler", "supplier"]
         operational_ok = bool(
             operational_rows > 0
             and frame.duplicated(keys).sum() == 0
+            and not unexpected_targets and not missing_targets
             and frame["target_promotion_status"].astype(str).str.startswith("qualified_").all()
             and frame["uncertainty_status"].eq("not_estimated").all()
             and frame["calibration_status"].eq("not_calibrated").all())
         operational_detail = (
             f"rows={operational_rows}; duplicate_keys={int(frame.duplicated(keys).sum())}; "
-            f"targets={frame['target'].nunique()}")
+            f"targets={len(forecast_targets)}; qualified_targets={len(qualified_targets)}; "
+            f"unexpected_targets={unexpected_targets}; missing_targets={missing_targets}")
 
     proxy_coverage = all(bool(item.get("passed")) for item in coverage.values())
     proxy_accuracy = bool(qualified) and all(

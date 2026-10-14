@@ -1,11 +1,11 @@
-"""Adapter for the separately trained news-only SLM signal surface.
+"""Adapter for the historical 20-column news-only output.
 
-The source model lives in ``existing_models/news_signal_model`` and remains
-independently reproducible. This adapter imports only its dated, 20-column
-feature output; it never imports a validation target or replaces the existing
-article-event layer. Annual sums are joined to the multi-model panel at year
-``t`` and therefore can only inform a ``t+1`` target through the existing
-chronological training/evaluation code.
+This module validates and loads the dated archive; it does not run inference.
+A separate local TF-IDF/Ridge article model and backend shadow runner are
+implemented under ``rebuilt_demand/`` and ``website/backend/``. The historical
+archive remains the training target for that experiment. Annual sums from the
+archive are joined to the multi-model panel at year ``t`` and therefore can
+only inform a ``t+1`` target through chronological training/evaluation.
 """
 
 from __future__ import annotations
@@ -47,6 +47,9 @@ def _source_path(cfg, source: Optional[Path] = None) -> Path:
     """Resolve an explicit source or the configured repository-relative CSV."""
     if source is not None:
         return Path(source).expanduser().resolve()
+    bundled = cfg.repo_root / "website/catalog/news_only_catalog_features.csv.gz"
+    if bundled.exists():
+        return bundled
     artifact = cfg.artifact_path("news/news_only_catalog_features.csv.gz")
     if artifact.exists():
         return artifact
@@ -85,7 +88,7 @@ def build_news_only_annual_features(cfg, source: Optional[Path] = None) -> pd.Da
 
 def materialize_news_only_features(cfg, source: Optional[Path] = None) -> tuple[Path, dict]:
     """Copy a validated SLM output into the architecture's versioned artifact tree."""
-    path = _source_path(cfg, source) if source is not None else Path(cfg.repo_root / cfg.news_only_features)
+    path = _source_path(cfg, source)
     frame = load_news_only_features(cfg, path)
     out = cfg.artifact_path("news/news_only_catalog_features.csv.gz")
     io.write_csv(frame, out)

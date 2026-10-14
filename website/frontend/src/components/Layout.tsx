@@ -1,18 +1,34 @@
+import { useEffect, useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { Activity, LayoutDashboard, LogOut } from 'lucide-react'
-import { getToken, clearToken } from '../api'
+import { Activity, BookOpen, LayoutDashboard, LogOut, Radio, ShieldOff } from 'lucide-react'
+import { isSignedIn, logout, logoutAll } from '../api'
+import { lockBrowserPlan } from '../browserForecast'
 
 export default function Layout() {
   const navigate = useNavigate()
-  const isLoggedIn = !!getToken()
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [logoutError, setLogoutError] = useState('')
+  useEffect(() => { isSignedIn().then(setIsLoggedIn) }, [])
 
-  function handleLogout() {
-    clearToken()
+  async function handleLogout(allSessions = false) {
+    lockBrowserPlan()
+    setLogoutError('')
+    try {
+      if (allSessions) await logoutAll()
+      else await logout()
+    } catch (err) {
+      if (!(err instanceof Error) || err.message !== 'Unauthorized') {
+        setLogoutError(`Could not end ${allSessions ? 'all server sessions' : 'the server session'}. Your local plan is locked; retry when connected.`)
+        return
+      }
+    }
+    setIsLoggedIn(false)
     navigate('/')
   }
 
   return <div className="min-h-screen bg-paper font-sans text-ink">
-    <header className="border-b border-slate-200"><div className="page-rail mx-auto max-w-[1060px] px-4 py-4 sm:px-8 sm:py-5"><nav className="flex min-h-14 items-center justify-between gap-3 rounded-full border border-white bg-paper/90 px-4 shadow-[0_0_0_2px_white] backdrop-blur-sm sm:px-6" aria-label="Workspace navigation"><NavLink to="/" className="flex items-center gap-2.5 text-lg font-medium tracking-tight text-ink"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-ink text-white"><Activity className="h-4 w-4" /></span>PULSE</NavLink><div className="flex items-center gap-2"><NavLink to="/dashboard" className={({ isActive }) => `inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ${isActive ? 'bg-white text-ink shadow-[0_1px_2px_rgba(55,50,47,0.12)]' : 'text-slate-600 hover:text-ink'}`}><LayoutDashboard className="h-4 w-4" /> <span className="hidden sm:inline">Dashboard</span></NavLink>{isLoggedIn && <button onClick={handleLogout} className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-slate-600 hover:bg-white hover:text-ink sm:px-4"><LogOut className="h-4 w-4" /><span className="hidden sm:inline">Log out</span></button>}</div></nav></div></header>
+    <header className="border-b border-slate-200"><div className="page-rail mx-auto max-w-[1060px] px-4 py-4 sm:px-8 sm:py-5"><nav className="flex min-h-14 items-center justify-between gap-3 rounded-full border border-white bg-paper/90 px-4 shadow-[0_0_0_2px_white] backdrop-blur-sm sm:px-6" aria-label="Workspace navigation"><NavLink to="/" className="flex items-center gap-2.5 text-lg font-medium tracking-tight text-ink"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-ink text-white"><Activity className="h-4 w-4" /></span>PULSE</NavLink><div className="flex items-center gap-2"><NavLink to="/signals" className={({ isActive }) => `inline-flex items-center gap-1 rounded-full px-3 py-2 text-sm font-medium ${isActive ? 'bg-white shadow-sm' : 'text-slate-600'}`}><Radio className="h-4 w-4" />Signals</NavLink><NavLink to="/api-guide" className={({ isActive }) => `inline-flex items-center gap-1 rounded-full px-3 py-2 text-sm font-medium ${isActive ? 'bg-white shadow-sm' : 'text-slate-600'}`}><BookOpen className="h-4 w-4" /><span className="hidden sm:inline">API guide</span></NavLink><NavLink to="/dashboard" className={({ isActive }) => `inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium ${isActive ? 'bg-white text-ink shadow-[0_1px_2px_rgba(55,50,47,0.12)]' : 'text-slate-600 hover:text-ink'}`}><LayoutDashboard className="h-4 w-4" /> <span className="hidden sm:inline">Dashboard</span></NavLink>{isLoggedIn && <><button onClick={() => handleLogout(true)} aria-label="Sign out everywhere" title="Sign out everywhere" className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-slate-600 hover:bg-white hover:text-ink sm:px-4"><ShieldOff className="h-4 w-4" /><span className="hidden lg:inline">Sign out everywhere</span></button><button onClick={() => handleLogout()} aria-label="Log out" className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-slate-600 hover:bg-white hover:text-ink sm:px-4"><LogOut className="h-4 w-4" /><span className="hidden sm:inline">Log out</span></button></>}</div></nav></div></header>
+    {logoutError && <p role="alert" className="mx-auto max-w-[1060px] px-4 text-sm text-risk-high sm:px-8">{logoutError}</p>}
     <main className="page-rail mx-auto min-h-[calc(100vh-96px)] max-w-[1060px] px-4 py-8 sm:px-8 sm:py-12 lg:px-12"><Outlet /></main>
   </div>
 }

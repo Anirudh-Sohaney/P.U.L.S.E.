@@ -48,7 +48,7 @@ def test_openfda_shortage_adapter_paginates_and_preserves_freshness(monkeypatch)
     assert metadata["last_updated"] == "2026-08-14"
 
 
-def test_openfda_enforcement_adapter_normalizes_active_status(monkeypatch):
+def test_openfda_enforcement_adapter_retains_published_status_without_active_flag(monkeypatch):
     payload = {
         "meta": {"last_updated": "2026-08-14", "results": {"total": 2}},
         "results": [
@@ -68,9 +68,11 @@ def test_openfda_enforcement_adapter_normalizes_active_status(monkeypatch):
 
     monkeypatch.setattr(live_inputs, "urlopen", fake_urlopen)
     frame, metadata = live_inputs.fetch_openfda_enforcement()
-    assert list(frame["recall_active"]) == [1, 0]
+    assert "recall_active" not in frame.columns
+    assert list(frame["status"]) == ["Ongoing", "Terminated"]
     assert list(frame["supplier"]) == ["Supplier A", "Supplier B"]
     assert metadata["last_updated"] == "2026-08-14"
+    assert metadata["status_semantics"] == "published_report_status_not_live_lifecycle"
 
 
 def test_fluview_weekly_adapter_normalizes_regions_and_preserves_issue(monkeypatch):

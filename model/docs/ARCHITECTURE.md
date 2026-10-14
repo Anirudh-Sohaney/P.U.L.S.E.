@@ -998,6 +998,16 @@ Required output columns:
 
 The forecast writer should support 100 to 10,000+ rows per run. More rows are preferred when supported by source coverage and compute.
 
+The guarded standard city/drug writer currently supports the next annual year
+only (`horizon_days=365`). It emits a single `all_context` row per available
+target and city/drug because its model does not estimate a separate forecast
+per disease driver. Its `prediction_interval_*` fields are null until a
+target-specific interval has been calibrated. `driver_summary_json` contains
+ridge log-component diagnostics only when that component has nonzero blend
+weight; it is empty for persistence and derived/risk targets. Shortage-risk
+and impact rows require a fitted risk model. Other research forecast surfaces
+have their own horizons and evidence rules.
+
 ## Backtesting
 
 Backtests must use time-based splits only:
