@@ -9,9 +9,12 @@
     "prebuild": "node scripts/vendor-pyodide.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "test:e2e": "playwright test",
     "lint": "eslint src vite.config.ts scripts --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
+    "@fontsource/instrument-serif": "^5.3.0",
+    "@fontsource/manrope": "^5.3.0",
     "axios": "^1.6.2",
     "lucide-react": "^0.294.0",
     "react": "^18.2.0",
@@ -21,6 +24,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@playwright/test": "^1.64.0",
     "@types/react": "^18.2.37",
     "@types/react-dom": "^18.2.15",
     "@vitejs/plugin-react": "^6.1.1",

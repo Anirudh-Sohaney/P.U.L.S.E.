@@ -89,7 +89,7 @@ export default function SignalsPage() {
         
         const latestMap = new Map(latestValues.map((v: any) => [v.id, v]))
         
-        let allDrugs = demandSignals.map((s: any) => {
+        const allDrugs = demandSignals.map((s: any) => {
             const val = latestMap.get(s.id)
             return {
                 id: s.id,
