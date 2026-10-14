@@ -8,3 +8,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <App />
   </React.StrictMode>,
 )
+
+import './theme.css'
+import './public.css'
+import './planning-hero.css'
+import '../tokens.css'
+import './identity.css'
+import './landing-content.css'
