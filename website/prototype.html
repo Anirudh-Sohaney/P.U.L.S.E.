@@ -224,15 +224,26 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
 /* Full-width navigation and section scrolling beneath the sticky controls. */
 html { scroll-behavior: smooth; }
 .frame { max-width: none; }
-.top { width: 100%; padding-inline: clamp(20px, 2.5vw, 48px); gap: 24px; }
-.nav-motion { flex: 1; }
-.nav { flex: 1; justify-content: space-between; }
+.top { width: 100%; padding: 12px clamp(16px, 2.5vw, 48px); background: rgba(243,248,249,.8); border: 0; backdrop-filter: blur(16px); }
+.nav-motion { width: 100%; padding: 6px; border-radius: 100px; background: rgba(255,255,255,.88); box-shadow: 0 4px 24px #173d3514; }
+.nav-motion .brand { flex-shrink: 0; display: inline-flex; align-items: center; gap: 9px; padding: 0 18px 0 10px; text-decoration: none; }
+.brand-mark { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: #286c73; color: white; }
+.nav-motion .brand i { display: none; }
+.nav-motion .nav-back { width: 42px; height: 42px; min-height: 42px; box-shadow: none; background: #edf5f4; }
+.nav { flex: 1; max-width: 740px; margin-inline: auto; justify-content: space-between; border: 0; background: transparent; }
 .nav button { flex: 1; }
+.nav-motion .nav-next { height: 48px; min-width: 150px; background: var(--ice); box-shadow: none; }
 [id] { scroll-margin-top: calc(var(--header-height, 96px) + var(--workspace-nav-height, 0px) + 24px); }
 @media (max-width: 760px) {
- .top { padding-inline: 20px; gap: 12px; }
- .nav { flex: none; }
- .nav button { flex: 1 0 auto; }
+ .top { display: block; padding: 8px 12px; }
+ .nav-motion { display: grid; grid-template-columns: minmax(0,1fr) 44px auto; gap: 8px; padding: 8px; border-radius: 24px; }
+ .nav-motion .brand { grid-column: 1; grid-row: 1; padding: 0 4px; }
+ .brand-mark { width: 30px; height: 30px; }
+ .nav-motion .nav-back { grid-column: 2; grid-row: 1; width: 44px; height: 44px; min-height: 44px; }
+ .nav-motion .nav-next { grid-column: 3; grid-row: 1; height: 44px; min-width: 130px; }
+ .nav { grid-column: 1 / -1; grid-row: 2; flex: none; width: 100%; }
+ .nav button { flex: 1; min-width: 0; padding-inline: 2px; font-size: 12px; }
+ .nav button::before { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
  html { scroll-behavior: auto; }
@@ -240,7 +251,7 @@ html { scroll-behavior: smooth; }
 
 </style>
 </head>
-<body><div class="frame"><header class="top"><a class="brand" href="#home" data-screen="home" aria-label="PULSE home">PULSE<i></i></a><div class="nav-motion"><button class="nav-back" id="nav-back" type="button" aria-label="Go back" disabled><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button><nav class="nav" aria-label="Prototype pages"><span class="nav-indicator" aria-hidden="true"></span><button class="active" data-screen="home">Home</button><button data-screen="workspace">Workspace</button><button data-screen="api">API guide</button><button data-screen="docs">API docs</button><button data-screen="access">Sign in</button></nav><button class="nav-next" id="nav-next" type="button"><span class="nav-next-copy"><small id="nav-next-caption">Next</small><span id="nav-next-label">Workspace</span></span><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button></div></header><nav class="workspace-nav" id="workspace-nav" aria-label="Workspace pages" hidden><button data-screen="workspace">Build a plan</button><button data-screen="demo">Sample plan</button><button data-screen="signals">Public signals</button></nav>
+<body><div class="frame"><header class="top"><div class="nav-motion"><a class="brand" href="#home" data-screen="home" aria-label="PULSE home"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.5 20.5 10-10a6.364 6.364 0 0 0-9-9l-10 10a6.364 6.364 0 0 0 9 9Z"/><path d="m8.5 8.5 7 7"/></svg></span>PULSE<i></i></a><button class="nav-back" id="nav-back" type="button" aria-label="Go back" disabled><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button><nav class="nav" aria-label="Prototype pages"><span class="nav-indicator" aria-hidden="true"></span><button class="active" data-screen="home">Home</button><button data-screen="workspace">Workspace</button><button data-screen="api">API guide</button><button data-screen="docs">API docs</button><button data-screen="access">Sign in</button></nav><button class="nav-next" id="nav-next" type="button"><span class="nav-next-copy"><small id="nav-next-caption">Next</small><span id="nav-next-label">Workspace</span></span><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button></div></header><nav class="workspace-nav" id="workspace-nav" aria-label="Workspace pages" hidden><button data-screen="workspace">Build a plan</button><button data-screen="demo">Sample plan</button><button data-screen="signals">Public signals</button></nav>
 <main>
 <section class="screen active" id="home"><div class="hero"><div><p class="eyebrow">A calmer way to plan replenishment</p><h1>Local care.<br><span>A clearer plan.</span></h1><p class="lead">Turn your sales and inventory history into a focused 14-day plan—so you can see which medicines may need attention, and when.</p><div class="actions"><button class="btn" data-go="workspace">Explore the demo ↗</button><a class="btn secondary" href="#how">See how it works ↓</a></div></div><div class="scene" aria-label="Abstract medicine capsule and stock cycle"><div class="blob"><i class="dot"></i></div><div class="pill"></div></div></div>
 <div class="wrap split"><div><p class="eyebrow">Inside the workspace</p><h2>The important details, in one place.</h2><p class="muted">See what may need ordering, with expected demand and inventory coverage for 1, 7, and 14 days.</p><p class="note">Illustrative interface · not a forecast. Dashboard populated after training with local files.</p></div><div class="mock"><div class="table-scroll"><table class="table"><thead><tr><th>Medication</th><th>Demand</th><th>Plan</th></tr></thead><tbody><tr><td>Drug specific view</td><td>1 · 7 · 14 days</td><td>Stock check</td></tr><tr><td>Inventory balance</td><td>Latest upload</td><td>Order guidance</td></tr></tbody></table></div><p class="eyebrow" style="margin:20px 0 0">Relevant signals · News context</p><div class="code">Demand context ▂▃▂▄▅▄▆▇▆█<br>Related article headlines appear alongside signals.</div></div></div>
