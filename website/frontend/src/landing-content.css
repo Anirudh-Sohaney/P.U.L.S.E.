@@ -61,8 +61,10 @@
 .pulse-footer nav a { color: var(--pulse-ink); font-size: 15px; line-height: 1.5; transition: color .2s ease; }
 .pulse-footer nav a:hover { color: var(--pulse-accent); }
 .pulse-public .pulse-footer-description { max-width: 48ch; margin: 64px auto 12px; color: var(--pulse-muted); text-align: center; font-size: 14px; line-height: 1.6; }
-.pulse-footer-wordmark { display: flex; justify-content: center; width: fit-content; max-width: 100%; margin: 0 auto; color: #62b8c8; font-family: var(--pulse-font); font-size: clamp(100px,22vw,315px); font-weight: 800; letter-spacing: -.095em; line-height: .88; text-decoration: none; white-space: nowrap; }
+.pulse-footer-wordmark { display: flex; align-items: center; justify-content: center; width: fit-content; max-width: 100%; margin: 0 auto; color: var(--pulse-ink); font-family: var(--pulse-font); font-size: clamp(46px,11vw,150px); font-weight: 800; letter-spacing: -.04em; line-height: 1; text-decoration: none; white-space: nowrap; }
+.pulse-footer-wordmark img { display: block; width: 1.7em; height: .85em; margin-right: .12em; flex: none; transition: transform .36s cubic-bezier(.2,.8,.2,1); }
 .pulse-footer-wordmark span { display: inline-block; transition: transform .36s cubic-bezier(.2,.8,.2,1), color .36s ease; transition-delay: calc(var(--letter) * 40ms); }
+.pulse-footer-wordmark:hover img,.pulse-footer-wordmark:focus-visible img { transform: translateY(-12px); }
 .pulse-footer-wordmark:hover span,.pulse-footer-wordmark:focus-visible span { transform: translateY(-12px); color: #287a86; }
 .pulse-footer-bottom { margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--pulse-line); color: var(--pulse-muted); font-size: 12px; }
 .pulse-access .pulse-access-main { min-height: calc(100dvh - 80px); display: grid; place-items: center; padding: 48px 24px; }
@@ -77,7 +79,7 @@
 .pulse-access .pulse-field { display: block; margin-top: 20px; font-size: 13px; font-weight: 600; }
 .pulse-access .pulse-field input { margin-top: 8px; }
 @keyframes pulse-access-enter { from { opacity: .35; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .pulse-footer-wordmark span,.pulse-access-tab-indicator { transition: none; } .pulse-access-body { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .pulse-footer-wordmark img,.pulse-footer-wordmark span,.pulse-access-tab-indicator { transition: none; } .pulse-footer-wordmark:hover img,.pulse-footer-wordmark:focus-visible img,.pulse-footer-wordmark:hover span,.pulse-footer-wordmark:focus-visible span { transform: none; } .pulse-access-body { animation: none; } }
 .pulse-legal { min-height: 60vh; max-width: 1152px; padding-block: 96px 120px; }
 .pulse-legal-back { display: inline-block; margin-bottom: 50px; color: var(--pulse-accent); font-size: 14px; }
 .pulse-legal h1 { max-width: 900px; font-family: var(--pulse-font-display); font-size: clamp(52px,6vw,84px); font-weight: 400; line-height: 1.05; letter-spacing: -.03em; }
@@ -99,7 +101,7 @@
  .pulse-footer-links { gap: 20px; }
  .pulse-footer nav a { font-size: 13px; }
  .pulse-public .pulse-footer-description { margin-top: 54px; font-size: 12px; }
- .pulse-footer-wordmark { font-size: clamp(68px,21vw,160px); }
+ .pulse-footer-wordmark { font-size: clamp(42px,11vw,84px); }
  .pulse-access .pulse-access-card { padding: 30px 24px; }
  .pulse-legal { padding-block: 56px 80px; }
  .pulse-legal-back { margin-bottom: 32px; }

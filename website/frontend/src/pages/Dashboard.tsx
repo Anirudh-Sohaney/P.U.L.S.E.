@@ -5,6 +5,8 @@ import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'rec
 import { apiFetch, login } from '../api'
 import { getBrowserPlan, lockBrowserPlan, trainInBrowser, unlockBrowserPlan } from '../browserForecast'
 import { privateStoreUnlocked } from '../privateStore'
+import { Confetti, type ConfettiRef } from '../components/ui/confetti'
+import { ProgressiveFluxLoader } from '../components/ui/progressive-flux-loader'
 
 type PlanItem = { drug_name: string; on_hand_units: number; on_order_units?: number; expected_arrival_date?: string | null; incoming_eta_overdue?: boolean; incoming_counted_by_day_14?: boolean; as_of_date?: string; forecast_1d_units: number; forecast_7d_units: number; forecast_14d_units: number; days_until_stockout: number | null; minimum_buy_1d_units: number; minimum_buy_7d_units: number; minimum_buy_14d_units: number; recommended_order_units: number; inventory_status: string }
 type Status = { ready: boolean; metrics?: { drugs_trained: number; history_start: string; history_end: string; signal_candidate_count: number; signal_feature_count: number; signal_selection_rule: string; planning_summary: { reorder_now: number; total_recommended_order_units: number } } }
@@ -26,6 +28,8 @@ export default function Dashboard() {
   const [signalYears, setSignalYears] = useState(2)
   const [planSignalYears, setPlanSignalYears] = useState(0)
   const [busy, setBusy] = useState(false)
+  const [celebrate, setCelebrate] = useState(false)
+  const confettiRef = useRef<ConfettiRef>(null)
   const [stage, setStage] = useState(0)
   const [progress, setProgress] = useState('')
   const [error, setError] = useState('')
@@ -85,6 +89,7 @@ export default function Dashboard() {
     const timer = setTimeout(() => setInitialWait(false), 500)
     window.addEventListener('focus', checkAccount)
     const onPrivateLock = () => {
+      setCelebrate(false)
       setStatus(null)
       setItems([])
       setSalesFile(null)
@@ -130,6 +135,17 @@ export default function Dashboard() {
     return () => window.clearInterval(timer)
   }, [busy])
 
+  useEffect(() => {
+    if (!celebrate || !status?.ready || busy) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setCelebrate(false); return }
+    const frame = window.requestAnimationFrame(() => confettiRef.current?.fire({
+      particleCount: 90, spread: 75, startVelocity: 35, origin: { y: .38 },
+      colors: ['#126F73', '#B4EAF5', '#EFC77B', '#FFFFFF'], disableForReducedMotion: true,
+    }))
+    const timeout = window.setTimeout(() => setCelebrate(false), 5000)
+    return () => { window.cancelAnimationFrame(frame); window.clearTimeout(timeout) }
+  }, [celebrate, status?.ready, busy])
+
   async function train(event: FormEvent) {
     event.preventDefault()
     if (!salesFile || !inventoryFile) { setError('Choose both a sales history and an inventory history CSV.'); return }
@@ -138,7 +154,7 @@ export default function Dashboard() {
     setSalesFile(null)
     setInventoryFile(null)
     setFileSelectionGeneration(value => value + 1)
-    setBusy(true); setError(''); setStage(0)
+    setBusy(true); setCelebrate(false); setError(''); setStage(0)
     try {
       await trainInBrowser(selectedSales, selectedInventory, signalYears, setProgress)
       const user = await apiFetch('/auth/me')
@@ -148,6 +164,7 @@ export default function Dashboard() {
         throw new Error('The signed-in account changed during training. Unlock this workspace again.')
       }
       await load(username)
+      setCelebrate(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Training failed')
     } finally { setBusy(false) }
@@ -178,6 +195,7 @@ export default function Dashboard() {
     : `${inventoryAsOf[0]} to ${inventoryAsOf[inventoryAsOf.length - 1]}`
 
   return <div className="space-y-6">
+    {celebrate && <Confetti ref={confettiRef} manualstart className="pointer-events-none fixed inset-0 z-[100] h-full w-full" aria-hidden="true" />}
     <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Your workspace</p><h1 className="mt-2 font-serif text-5xl font-normal text-ink">Demand & inventory</h1><p className="mt-2 text-sm text-slate-500">History {status.metrics?.history_start} to {status.metrics?.history_end}</p></div><button onClick={() => { setStatus({ ready: false }); setError('') }} className="rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-medium text-ink shadow-sm transition hover:bg-slate-100">Train with new files</button></div>
     {stalePlan && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-5 text-sm text-amber-950"><p className="font-semibold">Historical plan: update your files before ordering.</p><p className="mt-1">Sales end on {status.metrics?.history_end}; recorded inventory is from {inventoryLabel}. Forecast days and quantities below are anchored to those dates, not today.</p></div>}
     {noEligiblePublicSignals && <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-5 text-sm text-amber-950"><p className="font-semibold">No public signals were eligible for this training run.</p><p className="mt-1">You selected {planSignalYears} {planSignalYears === 1 ? 'year' : 'years'} of signal history, but none passed both point-in-time availability and the holdout improvement check for these sales records. The forecast used your sales and inventory histories; the latest inventory balance still drives the order plan. A longer lookback or later source releases may change signal eligibility.</p></div>}
@@ -197,7 +215,8 @@ function FileCard({ title, description, file, onChange }: { title: string; descr
 }
 
 function Training({ stage, progress }: { stage: number; progress: string }) {
-  return <div className="mx-auto max-w-xl rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary-50"><Loader2 className="h-7 w-7 animate-spin text-primary-600" /></div><h1 className="mt-5 font-serif text-4xl text-ink">Training on your device.</h1><p className="mt-2 text-sm text-slate-500">{progress || 'Preparing local files and public signals'}. This can take several minutes for a large history.</p><ol className="mt-7 space-y-3 text-left">{stages.map((label, index) => <li key={label} className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${index === stage ? 'bg-primary-50 font-medium text-primary-800' : 'text-slate-500'}`}>{index < stage ? <Check className="h-4 w-4 text-risk-low" /> : index === stage ? <Loader2 className="h-4 w-4 animate-spin" /> : <span className="h-4 w-4 rounded-full border border-slate-300" />}{label}</li>)}</ol></div>
+  const message = progress || 'Preparing local files and public signals'
+  return <div className="mx-auto max-w-xl rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary-50"><Loader2 className="h-7 w-7 animate-spin text-primary-600" /></div><h1 className="mt-5 font-serif text-4xl text-ink">Training on your device.</h1><p className="mt-2 text-sm text-slate-500">This can take several minutes for a large history.</p><ProgressiveFluxLoader phases={[{ at: 0, label: message }]} ariaLabel="Training on this device" className="mt-6 gap-3" barClassName="h-3" textClassName="text-base leading-snug text-primary-800 sm:text-lg" /><ol className="mt-7 space-y-3 text-left">{stages.map((label, index) => <li key={label} className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${index === stage ? 'bg-primary-50 font-medium text-primary-800' : 'text-slate-500'}`}>{index < stage ? <Check className="h-4 w-4 text-risk-low" /> : index === stage ? <Loader2 className="h-4 w-4 animate-spin" /> : <span className="h-4 w-4 rounded-full border border-slate-300" />}{label}</li>)}</ol></div>
 }
 
 function SignalCard({ signal }: { signal: Signal }) {
