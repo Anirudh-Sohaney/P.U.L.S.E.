@@ -1,7 +1,8 @@
-﻿import { useRef } from 'react'
+﻿import { useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, ArrowUpRight } from 'lucide-react'
 import PublicHeader from '../components/PublicHeader'
+import PublicFooter from '../components/PublicFooter'
 import PharmacyScene from '../components/PharmacyScene'
 import usePublicReveals from '../hooks/usePublicReveals'
 import '../public.css'
@@ -25,9 +26,23 @@ const questions = [
   ['Can I update the plan?', 'Yes. Select newer sales and inventory files in your workspace to train a fresh local model and replace its encrypted plan.'],
   ['Is this a clinical decision tool?', 'No. PULSE is a research demo. Forecasts and purchase guidance need review by qualified pharmacy staff.'],
 ]
+const faqTerms = ['file csv upload sales inventory', 'signal catalog history', 'plan update retrain newer fresh replace', 'clinical decision medical research qualified']
+
+function findFaqAnswer(query: string) {
+  const words = query.toLowerCase().match(/[a-z]{4,}/g) ?? []
+  const scores = faqTerms.map(terms => words.filter(word => terms.split(' ').some(term => term.startsWith(word) || word.startsWith(term))).length)
+  const best = Math.max(...scores)
+  return best ? questions[scores.indexOf(best)] : null
+}
 
 export default function LandingPage() {
   const pageRef = useRef<HTMLDivElement>(null)
+  const [faqQuery, setFaqQuery] = useState('')
+  const [faqResult, setFaqResult] = useState<string[] | null | undefined>()
+  function askFaq(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setFaqResult(findFaqAnswer(faqQuery))
+  }
   usePublicReveals(pageRef)
   return <div className="pulse-public pulse-source-landing" ref={pageRef}>
     <a className="pulse-skip" href="#main">Skip to content</a>
@@ -51,16 +66,6 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
-      <section className="source-preview pulse-container" aria-label="Workspace preview">
-        <div className="source-section-heading pulse-reveal"><p>Inside the workspace</p><h2>The important details, in one place.</h2><span>Illustrative interface</span></div>
-        <div className="source-preview-grid pulse-reveal">
-          <div><p className="source-label">Restock priorities</p><h3>See what may need ordering.</h3><p>Each medication gets a clear view of expected demand and inventory coverage for the next 1, 7, and 14 days.</p>
-            <div className="source-preview-table" role="region" aria-label="Illustrative inventory preview" tabIndex={0}><table><thead><tr><th>Medication</th><th>Demand horizon</th><th>Plan</th></tr></thead><tbody><tr><td>Drug-specific view</td><td>1 · 7 · 14 days</td><td>Stock check</td></tr><tr><td>Inventory balance</td><td>Latest upload</td><td>Order guidance</td></tr></tbody></table></div>
-          </div>
-          <div><p className="source-label">Relevant signals</p><h3>A little more context.</h3><p>A short list of signals associated with medications that may run short.</p><div className="source-context"><h4>Demand context</h4><div className="source-bars" aria-hidden="true">{[35,44,40,57,62,58,74,80,76,90].map((value,index)=><span key={index} style={{height:`${value}%`}} />)}</div><h4>News context</h4><p>Related article headlines appear alongside relevant signals.</p></div></div>
-        </div>
-        <p className="source-footnote">This is a layout preview, not a forecast. Your dashboard is populated only after you train with local files.</p>
-      </section>
       <section id="features" className="source-features pulse-container">
         <div className="source-section-heading pulse-reveal"><p>What PULSE does</p><h2>Answers you can act on, without the noise.</h2><p>Daily sales and current stock become a concise view of demand, purchase needs, and the signals behind them.</p></div>
         <div className="source-feature-list pulse-reveal">{features.map(([title,copy])=><article key={title}><h3>{title}</h3><p>{copy}</p></article>)}</div>
@@ -69,14 +74,20 @@ export default function LandingPage() {
         <div className="source-section-heading pulse-reveal"><p>A simple workflow</p><h2>Two files in. A clearer plan out.</h2><p>No complicated setup. Start with the records you already have, then let your browser handle the modeling work.</p><span>Local CSVs · browser training</span></div>
         <ol className="source-steps pulse-reveal">{steps.map(([title,copy],index)=><li key={title}><span aria-hidden="true">0{index+1}</span><div><h3>{title}</h3><p>{copy}</p></div></li>)}</ol>
       </section>
-      <section id="questions" className="pulse-faq pulse-container">
-        <div className="pulse-reveal"><p className="source-label">Good to know</p><h2>A few practical details.</h2></div>
-        <div className="pulse-faq-list pulse-reveal">{questions.map(([question,answer])=><details key={question}><summary>{question}<span className="pulse-faq-plus" aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div>
+      <section id="questions" className="pulse-faq-section">
+        <div className="pulse-faq pulse-container">
+          <div className="pulse-reveal pulse-faq-intro"><p className="source-label">Good to know</p><h2>Questions</h2><p>Start with the essentials. Find an answer from these PULSE FAQs below.</p></div>
+          <div className="pulse-faq-list pulse-reveal">
+            {questions.map(([question,answer])=><details key={question}><summary>{question}<span className="pulse-faq-plus" aria-hidden="true">⌄</span></summary><p>{answer}</p></details>)}
+            <form className="pulse-faq-ask" onSubmit={askFaq}><label htmlFor="faq-question">Find an answer</label><div><input id="faq-question" value={faqQuery} onChange={event => { setFaqQuery(event.target.value); setFaqResult(undefined) }} placeholder="Ask about files, signals, plans…" required /><button type="submit" aria-label="Find FAQ answer"><ArrowRight size={19} /></button></div></form>
+            {faqResult !== undefined && <div className="pulse-faq-answer" role="status">{faqResult ? <><strong>{faqResult[0]}</strong><p>{faqResult[1]}</p></> : <p>No matching FAQ answer yet. Browse the questions above or visit the <Link to="/api-guide">API guide</Link>.</p>}</div>}
+          </div>
+        </div>
       </section>
       <section className="pulse-cta pulse-container">
         <p className="source-label">Ready when you are</p><h2>Make the next replenishment decision a little clearer.</h2><p>Start a private workspace, select your history, and see what may need attention over the next 14 days.</p><Link to="/signup" className="pulse-button">Create a workspace <ArrowRight size={18} /></Link>
       </section>
     </main>
-    <footer className="pulse-footer pulse-container"><Link to="/" className="pulse-wordmark">PULSE</Link><p>Pharmacy demand planning · Research demo</p></footer>
+    <PublicFooter />
   </div>
 }

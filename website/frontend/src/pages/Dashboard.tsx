@@ -29,6 +29,7 @@ export default function Dashboard() {
   const [stage, setStage] = useState(0)
   const [progress, setProgress] = useState('')
   const [error, setError] = useState('')
+  const [initialWait, setInitialWait] = useState(true)
   const [username, setUsername] = useState('')
   const [locked, setLocked] = useState(false)
   const [unlockPassword, setUnlockPassword] = useState('')
@@ -81,6 +82,7 @@ export default function Dashboard() {
       }
     }
     checkAccount()
+    const timer = setTimeout(() => setInitialWait(false), 500)
     window.addEventListener('focus', checkAccount)
     const onPrivateLock = () => {
       setStatus(null)
@@ -97,6 +99,7 @@ export default function Dashboard() {
     window.addEventListener('pulse-private-locked', onPrivateLock)
     return () => {
       active = false
+      clearTimeout(timer)
       window.removeEventListener('focus', checkAccount)
       window.removeEventListener('pulse-private-locked', onPrivateLock)
     }
@@ -151,6 +154,7 @@ export default function Dashboard() {
   }
 
   if (locked) return <div className="mx-auto max-w-lg paper-card rounded-2xl p-7"><h1 className="font-serif text-4xl text-ink">Unlock your workspace.</h1><p className="mt-3 text-sm text-slate-600">Your saved plan is encrypted on this device. Enter your account password to unlock it or train a new plan.</p><form onSubmit={unlock} className="mt-5 space-y-4"><label className="block text-sm font-medium">Password<input type="password" autoComplete="current-password" value={unlockPassword} onChange={event => setUnlockPassword(event.target.value)} required className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3" /></label>{error && <p role="alert" className="text-sm text-risk-high">{error}</p>}<button className="dark-pill px-6 py-3 text-sm">Unlock plan</button></form></div>
+  if (initialWait) return <Loading />
   if (error && !status) return <Notice text={error} />
   if (!status) return <Loading />
   if (busy) return <Training stage={stage} progress={progress} />
